@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata = { title: "Commander Center", description: "Painel fortaleza: clientes, projetos, empresa e comunidade" };
 
