@@ -4,6 +4,7 @@ import { ACCOUNTS, KIND_LABEL, hasToken, notConnectedReason } from "@/lib/accoun
 import { fetchAccountDetail, type AccountDetail } from "@/lib/hl";
 import { accountHealth, money, moneyShort } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
+import LeadList from "@/components/LeadList";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -130,16 +131,7 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
 
           <h2>New leads this week · {detail.weekLeads.length}</h2>
           <div className="card">
-            {detail.weekLeads.length ? (
-              detail.weekLeads.map((l, i) => (
-                <div className="lead" key={i}>
-                  <span>{l.name}<br /><small>{l.when}, {l.sourceLabel}</small></span>
-                  <span className={`tag${l.emailOnly ? " email" : ""}`}>{l.emailOnly ? "unverified" : "lead"}</span>
-                </div>
-              ))
-            ) : (
-              <p style={{ fontSize: 14, color: "#B7A69B" }}>No new leads in the last 7 days.</p>
-            )}
+            <LeadList leads={detail.weekLeads} emptyText="No new leads in the last 7 days." />
           </div>
 
           <h2>Conversations</h2>

@@ -113,6 +113,17 @@ small.note { color: #B7A69B; display: block; font-size: 12px; margin-top: 3px; }
 .tag.email { background: #3A2E14; color: #FFD97C; }
 .tag.fake { background: #3A1E1E; color: #FF9D9D; }
 
+/* Filtro Verified x Unverified nas listas de leads */
+.leadfilter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.lfbtn { font-family: "Poppins", sans-serif; font-size: 12.5px; font-weight: 600; padding: 6px 13px; border-radius: 999px; border: 1px solid #3A2E28; background: #1D1713; color: #B7A69B; cursor: pointer; }
+.lfbtn:hover { color: #F7EFE9; }
+.lfbtn.on { background: linear-gradient(120deg, #F0772E, #C0240A); border-color: transparent; color: #FFF7F2; }
+.lfcount { font-weight: 700; opacity: .85; }
+.unvsummary { background: #241C10; border: 1px solid #3A2E14; border-radius: 12px; padding: 11px 14px; font-size: 13px; color: #E8D9C8; margin-bottom: 8px; line-height: 1.5; }
+.unvsummary b { color: #FFD97C; }
+.unvsrc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.srcchip { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #3A2E14; color: #FFD97C; white-space: nowrap; }
+
 /* Links de navegação entre a visão geral e a página da conta */
 a.acctlink { color: inherit; text-decoration: none; }
 a.acctlink:hover { text-decoration: underline; text-underline-offset: 3px; }

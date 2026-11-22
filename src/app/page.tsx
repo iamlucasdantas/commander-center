@@ -6,6 +6,7 @@ import {
   type AccountData,
 } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
+import LeadList from "@/components/LeadList";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -373,13 +374,8 @@ export default async function Home() {
       <div className="grid2">
         <div className="card">
           <div className="label">Drill-down{topAccount ? <>, <Link className="acctlink" href={`/account/${topAccount.a.slug}`}>{topAccount.a.name}</Link>, this week's leads</> : ""}</div>
-          {topAccount?.m.recentLeads.length ? (
-            topAccount.m.recentLeads.map((l, i) => (
-              <div className="lead" key={i}>
-                <span>{l.name}<br /><small>{l.when}, {l.sourceLabel}</small></span>
-                <span className={`tag${l.emailOnly ? " email" : ""}`}>{l.emailOnly ? "unverified" : "lead"}</span>
-              </div>
-            ))
+          {topAccount ? (
+            <LeadList leads={topAccount.m.recentLeads} emptyText="No leads in the last 7 days." />
           ) : (
             <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>No leads in the last 7 days.</p>
           )}
