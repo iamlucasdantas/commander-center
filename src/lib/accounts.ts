@@ -73,3 +73,26 @@ export const FAKE_NAME_PATTERNS: string[] = [
 
 /** Origens que contam como lead de verdade. Email inbound avulso NÃO conta. */
 export const REAL_LEAD_SOURCES = ["form", "calendar", "chat", "workflow", "survey", "quiz"] as const;
+
+export const KIND_LABEL: Record<AccountKind, string> = {
+  empresa: "Company",
+  comunidade: "Community",
+  cliente: "Client",
+  projeto: "Project",
+  potencial: "Prospect",
+};
+
+/** True when the account's PIT variable is filled in the environment. Never exposes the value. */
+export function hasToken(a: Account): boolean {
+  return Boolean(a.pitEnv && process.env[a.pitEnv]);
+}
+
+/** Short reason shown for accounts with no live data (home "Not connected yet" + account page status). */
+export function notConnectedReason(a: Account): string {
+  if (a.sourceStatus === "hl-location") {
+    return hasToken(a) ? "Connected, but no data yet" : "Waiting for token";
+  }
+  if (a.sourceStatus === "sem-subconta") return "No HighLevel account yet";
+  if (a.sourceStatus === "propria") return "Own data source, not connected yet";
+  return "Lead source not mapped yet";
+}

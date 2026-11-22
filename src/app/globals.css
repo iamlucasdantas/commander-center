@@ -113,6 +113,28 @@ small.note { color: #B7A69B; display: block; font-size: 12px; margin-top: 3px; }
 .tag.email { background: #3A2E14; color: #FFD97C; }
 .tag.fake { background: #3A1E1E; color: #FF9D9D; }
 
+/* Links de navegação entre a visão geral e a página da conta */
+a.acctlink { color: inherit; text-decoration: none; }
+a.acctlink:hover { text-decoration: underline; text-underline-offset: 3px; }
+a.rank-row { text-decoration: none; color: inherit; border-radius: 10px; padding: 5px 8px; margin: -5px -8px; }
+a.rank-row:hover { background: #1D1713; }
+.backlink { display: inline-block; color: #B7A69B; text-decoration: none; font-size: 13.5px; font-weight: 600; margin-bottom: 16px; }
+.backlink:hover { color: #F7EFE9; }
+
+/* Página da conta */
+.statuscard { padding: 30px; }
+.statusbig { font-family: "Archivo Black", sans-serif; font-size: 24px; color: #FFD97C; }
+.healthstrip { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-bottom: 16px; }
+.healthlbl { font-size: 15px; font-weight: 700; color: #FCE3D4; }
+.reasons { list-style: none; font-size: 13px; color: #CBBBAE; line-height: 1.7; margin-top: 2px; }
+.healthside { margin-left: auto; text-align: right; }
+.healthside .label { color: #B7A69B; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.conv { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #241D19; font-size: 14px; align-items: center; }
+.conv:last-child { border-bottom: none; }
+.conv small { color: #B7A69B; display: block; font-size: 12px; margin-top: 2px; }
+.conv .preview { color: #CBBBAE; display: block; font-size: 12.5px; margin-top: 3px; }
+.tag.unread { background: #3A1E1E; color: #FF9D9D; }
+
 /* Rodapé e roadmap */
 .steps { font-size: 13.5px; line-height: 2; color: #CBBBAE; list-style: none; }
 .steps .done { color: #7CE3A8; font-weight: 700; }

@@ -1,23 +1,14 @@
-import { ACCOUNTS, type Account } from "@/lib/accounts";
+import Link from "next/link";
+import { ACCOUNTS, KIND_LABEL, hasToken, notConnectedReason, type Account } from "@/lib/accounts";
 import { fetchAccountMetrics, type AccountMetrics } from "@/lib/hl";
 import {
   accountHealth, buildAttentionQueue, buildWhatChanged, money, moneyShort, pctChange, vsAverage,
   type AccountData,
 } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
+import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
-
-/** Todo horário visível no painel é America/Chicago, nunca o UTC do servidor. */
-const TZ = "America/Chicago";
-
-const KIND_LABEL: Record<Account["kind"], string> = {
-  empresa: "Company",
-  comunidade: "Community",
-  cliente: "Client",
-  projeto: "Project",
-  potencial: "Prospect",
-};
 
 const SHORT_NAME: Record<string, string> = {
   "magnetic-funnels-us": "Magnetic Funnels",
@@ -31,108 +22,6 @@ const SHORT_NAME: Record<string, string> = {
 
 function shortName(a: Account): string {
   return SHORT_NAME[a.slug] ?? a.name;
-}
-
-function hasToken(a: Account): boolean {
-  return Boolean(a.pitEnv && process.env[a.pitEnv]);
-}
-
-/** Short reason shown in the "Not connected yet" section for accounts with no live data. */
-function notConnectedReason(a: Account): string {
-  if (a.sourceStatus === "hl-location") {
-    return hasToken(a) ? "Connected, but no data yet" : "Waiting for token";
-  }
-  if (a.sourceStatus === "sem-subconta") return "No HighLevel account yet";
-  if (a.sourceStatus === "propria") return "Own data source, not connected yet";
-  return "Lead source not mapped yet";
-}
-
-/** Sparkline SVG a partir de uma série diária. Server-rendered, sem JS.
- *  showPeak desenha o valor do pico no canto: é a escala mínima legível. */
-function Spark({ data, w = 110, h = 30, stroke = "#F0772E", fill = true, showPeak = false }: {
-  data: number[]; w?: number; h?: number; stroke?: string; fill?: boolean; showPeak?: boolean;
-}) {
-  const max = Math.max(1, ...data);
-  const top = showPeak ? 12 : 3;
-  const step = data.length > 1 ? w / (data.length - 1) : w;
-  const pts = data.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / max) * (h - 3 - top)).toFixed(1)}`);
-  const line = pts.join(" ");
-  const area = `0,${h} ${line} ${w},${h}`;
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" style={{ display: "block" }}>
-      {fill && <polygon points={area} fill={stroke} opacity="0.14" />}
-      <polyline points={line} fill="none" stroke={stroke} strokeWidth="1.8" strokeLinejoin="round" />
-      {showPeak && <text x={w - 1} y={9} textAnchor="end" fontSize="9" fill="#B7A69B">peak {max}</text>}
-    </svg>
-  );
-}
-
-/** Chip de variação contra o período anterior. invert=true quando subir é ruim (ex.: não lidas). */
-function Delta({ cur, prev, invert = false }: { cur: number; prev: number; invert?: boolean }) {
-  const pct = pctChange(cur, prev);
-  if (pct === null) return <span className="hint">no baseline yet</span>;
-  if (pct === 0) return <span className="hint">flat vs previous period</span>;
-  const good = invert ? pct < 0 : pct > 0;
-  return (
-    <span className={good ? "up" : "down"}>
-      {pct > 0 ? "▲" : "▼"} {Math.abs(pct)}% vs previous period
-    </span>
-  );
-}
-
-/** Anel de progresso genérico (saúde, conexão). */
-function Ring({ pct, color, center, size = 40 }: { pct: number; color: string; center: string; size?: number }) {
-  const r = size / 2 - 4;
-  const C = 2 * Math.PI * r;
-  const c = size / 2;
-  const clamped = Math.max(0, Math.min(100, pct));
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ flexShrink: 0 }}>
-      <circle cx={c} cy={c} r={r} fill="none" stroke="#2B2320" strokeWidth="4.5" />
-      <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth="4.5" strokeLinecap="round"
-        strokeDasharray={`${(clamped / 100) * C} ${C}`} transform={`rotate(-90 ${c} ${c})`} />
-      <text x={c} y={c + 4} textAnchor="middle" fontSize={size >= 44 ? 13 : 11} fontWeight="700" fill="#FCE3D4">{center}</text>
-    </svg>
-  );
-}
-
-const HEALTH_COLOR = { green: "#3DDC84", yellow: "#FFD97C", red: "#FF6B6B" } as const;
-
-/** Gráfico principal: área em gradiente chama (30d) + linha tracejada do
- *  período anterior, com eixos rotulados (padrão Stripe/ChartMogul). */
-function HeroChart({ cur, prev }: { cur: number[]; prev: number[] }) {
-  const W = 640, H = 208, X0 = 44, X1 = 632, YT = 14, YB = 168;
-  const max = Math.max(1, ...cur, ...prev);
-  const x = (i: number) => X0 + (i / (cur.length - 1)) * (X1 - X0);
-  const y = (v: number) => YB - (v / max) * (YB - YT);
-  const line = (s: number[]) => s.map((v, i) => `${x(i).toFixed(0)},${y(v).toFixed(0)}`).join(" ");
-  const area = `${X0},${YB} ${line(cur)} ${X1},${YB}`;
-  const grid = [...new Set([0, Math.max(1, Math.round(max / 2)), max])];
-  const dayLabel = (daysAgo: number) =>
-    new Date(Date.now() - daysAgo * 86_400_000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: TZ });
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }} role="img" aria-label="Daily leads, last 30 days compared with the previous 30 days">
-      <defs>
-        <linearGradient id="flameFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#EB611C" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#C0240A" stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      {grid.map((v) => (
-        <g key={v}>
-          <line x1={X0} x2={X1} y1={y(v)} y2={y(v)} stroke="#2B2320" strokeWidth="1" />
-          <text x={X0 - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#B7A69B">{v}</text>
-        </g>
-      ))}
-      <polygon points={area} fill="url(#flameFill)" />
-      <polyline points={line(prev)} fill="none" stroke="#8A7A70" strokeWidth="2" strokeDasharray="5 4" />
-      <polyline points={line(cur)} fill="none" stroke="#F0772E" strokeWidth="2.5" strokeLinejoin="round" />
-      <text x={X0 + 2} y={YT + 4} fontSize="10.5" fill="#B7A69B">peak {Math.max(...cur)}/day</text>
-      <text x={x(0)} y={192} fontSize="11" fill="#B7A69B">{dayLabel(29)}</text>
-      <text x={x(15)} y={192} textAnchor="middle" fontSize="11" fill="#B7A69B">{dayLabel(14)}</text>
-      <text x={x(29)} y={192} textAnchor="end" fontSize="11" fill="#B7A69B">Today, {dayLabel(0)}</text>
-    </svg>
-  );
 }
 
 /** Donut de composição (fontes de lead + fakes), 30 dias. */
@@ -373,7 +262,7 @@ export default async function Home() {
             <div className={`qitem sev${item.severity}`} key={`${item.slug}-${i}`}>
               <div className="qmetric">{item.metric}</div>
               <div className="qmain">
-                <div className="qhead"><b>{item.account}</b><span className="qheadline">{item.headline}</span></div>
+                <div className="qhead"><b><Link className="acctlink" href={`/account/${item.slug}`}>{item.account}</Link></b><span className="qheadline">{item.headline}</span></div>
                 <div className="riskbar"><i style={{ width: `${item.moneyAtRisk > 0 ? Math.max(3, Math.round((item.moneyAtRisk / maxRisk) * 100)) : 0}%` }} /></div>
                 <div className="qmeta">
                   <span>{item.moneyAtRisk > 0 ? `${money(item.moneyAtRisk)} at risk` : "no pipeline value"}</span>
@@ -411,7 +300,7 @@ export default async function Home() {
             const h = healthOf.get(a.slug)!;
             const pct = pctChange(m.leads7d, m.leadsPrev7d);
             return (
-              <div className="rank-row" key={a.slug}>
+              <Link className="rank-row" href={`/account/${a.slug}`} key={a.slug}>
                 <span className={`hdot ${h.level}`} title={`${h.label}: ${h.reasons.join("; ")}`} />
                 <span className="rank-name">{shortName(a)}</span>
                 <span className="rank-track"><i style={{ width: `${Math.round((m.leads7d / maxLeads7d) * 100)}%` }} /></span>
@@ -419,7 +308,7 @@ export default async function Home() {
                 <span className={`rank-delta ${pct === null ? "" : pct > 0 ? "up" : pct < 0 ? "down" : ""}`}>
                   {pct === null ? (m.leads7d > 0 ? "new" : "—") : pct === 0 ? "flat" : `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}%`}
                 </span>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -454,7 +343,7 @@ export default async function Home() {
                     const vs = vsAverage(m.leads7d, avgLeads7d);
                     return (
                       <tr key={a.slug}>
-                        <td><b>{a.name}</b><small className="note">{KIND_LABEL[a.kind]}{a.note ? `, ${a.note}` : ""}</small></td>
+                        <td><b><Link className="acctlink" href={`/account/${a.slug}`}>{a.name}</Link></b><small className="note">{KIND_LABEL[a.kind]}{a.note ? `, ${a.note}` : ""}</small></td>
                         <td>
                           <div className="ringwrap" title={h.reasons.join("; ")}>
                             <Ring pct={h.score} color={HEALTH_COLOR[h.level]} center={`${h.score}`} />
@@ -483,7 +372,7 @@ export default async function Home() {
 
       <div className="grid2">
         <div className="card">
-          <div className="label">Drill-down{topAccount ? `, ${topAccount.a.name}, this week's leads` : ""}</div>
+          <div className="label">Drill-down{topAccount ? <>, <Link className="acctlink" href={`/account/${topAccount.a.slug}`}>{topAccount.a.name}</Link>, this week's leads</> : ""}</div>
           {topAccount?.m.recentLeads.length ? (
             topAccount.m.recentLeads.map((l, i) => (
               <div className="lead" key={i}>
@@ -527,7 +416,7 @@ export default async function Home() {
           <div style={{ marginTop: 8 }}>
             {notLive.map((a) => (
               <div className="nc-row" key={a.slug}>
-                <span><b>{a.name}</b>{a.note && <small className="note">{a.note}</small>}</span>
+                <span><b><Link className="acctlink" href={`/account/${a.slug}`}>{a.name}</Link></b>{a.note && <small className="note">{a.note}</small>}</span>
                 <span className="nc-reason">{notConnectedReason(a)}</span>
               </div>
             ))}
