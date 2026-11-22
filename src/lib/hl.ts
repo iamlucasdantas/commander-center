@@ -361,6 +361,7 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
   const fakesAll: FakeItem[] = [];
   let partnerTotal = 0;
   let partnerSeparated = 0;
+  let goneCount = 0;
   for (const c of contacts) {
     const t = new Date(c.dateAdded ?? 0).getTime();
     if (!t) continue;
@@ -368,7 +369,7 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     const ageDays = Math.floor(age / day);
     // Automação de 7 dias: não verificado velho já em DND some de TUDO
     // (lista, contador, conversa, quarentena). Ver isGoneContact.
-    if (isGoneContact(a, c, marks, now)) continue;
+    if (isGoneContact(a, c, marks, now)) { goneCount++; continue; }
     // Comprador Partner US$ 1: classe separada, fora de TODAS as métricas
     // e listas de leads desta conta (regra do Lucas, 2026-11-22).
     if (isPartnerBuyer(a, c)) {
@@ -419,6 +420,10 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     }
   }
   m.leadsByDay = m.leadsByDay30.slice(16);
+  // O total bruto da API inclui quem a automação de 7 dias tirou do
+  // painel; desconta os que sumiram dentro da janela varrida (nas
+  // contas dentro da janela de 500, é o número exato).
+  m.totalContacts = Math.max(0, total - goneCount);
   return { m, weekLeads, fakesAll, partnerTotal, partnerSeparated };
 }
 
