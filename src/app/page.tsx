@@ -417,7 +417,7 @@ export default async function Home() {
                 <span className="rank-track"><i style={{ width: `${Math.round((m.leads7d / maxLeads7d) * 100)}%` }} /></span>
                 <span className="rank-val">{m.leads7d}</span>
                 <span className={`rank-delta ${pct === null ? "" : pct > 0 ? "up" : pct < 0 ? "down" : ""}`}>
-                  {pct === null ? "new" : pct === 0 ? "flat" : `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}%`}
+                  {pct === null ? (m.leads7d > 0 ? "new" : "—") : pct === 0 ? "flat" : `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}%`}
                 </span>
               </div>
             );
