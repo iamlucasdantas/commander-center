@@ -48,3 +48,8 @@ small.note { color: #9FB2C3; display: block; font-size: 12px; margin-top: 2px; }
 .fake { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid #1C2836; font-size: 14px; }
 .fake:last-child { border-bottom: none; }
 .chart { background: #111922; border: 1px solid #22303E; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+details.notconnected { margin-top: 24px; }
+details.notconnected summary { cursor: pointer; font-weight: 700; font-size: 15px; color: #C7D3DF; }
+.nc-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #1C2836; font-size: 14px; }
+.nc-row:last-child { border-bottom: none; }
+.nc-reason { color: #9FB2C3; font-size: 12px; white-space: nowrap; }

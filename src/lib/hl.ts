@@ -54,7 +54,7 @@ function contactName(c: HLContact): string {
     c.name ||
     [c.firstName, c.lastName].filter(Boolean).join(" ") ||
     c.email ||
-    "Sem nome"
+    "No name"
   );
 }
 
@@ -117,7 +117,7 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       const fake = isFake(c);
       if (fake) {
         if (age < 30 * day && m.fakes.length < 10) {
-          m.fakes.push({ name: contactName(c), account: a.name, reason: "nome de empresa/serviço, email avulso" });
+          m.fakes.push({ name: contactName(c), account: a.name, reason: "company/service name, stray email" });
         }
         continue;
       }
@@ -130,8 +130,8 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       if (m.recentLeads.length < 8 && age < 7 * day) {
         m.recentLeads.push({
           name: contactName(c),
-          when: new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
-          sourceLabel: c.source || (isEmailOnly(c) ? "email avulso" : "sem origem"),
+          when: new Date(t).toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
+          sourceLabel: c.source || (isEmailOnly(c) ? "stray email" : "no source"),
           emailOnly: isEmailOnly(c),
         });
       }

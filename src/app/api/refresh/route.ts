@@ -20,13 +20,13 @@ export async function POST(req: Request) {
   ).filter((a) => !slug || a.slug === slug);
 
   if (slug && targets.length === 0) {
-    return NextResponse.json({ ok: false, error: "Conta sem fonte ligada para atualizar" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Account has no connected source to refresh" }, { status: 400 });
   }
   if (running) {
-    return NextResponse.json({ ok: false, error: "Já há uma atualização em andamento" }, { status: 409 });
+    return NextResponse.json({ ok: false, error: "A refresh is already running" }, { status: 409 });
   }
   if (Date.now() - lastRunAt < COOLDOWN_MS) {
-    return NextResponse.json({ ok: false, error: "Atualização feita há menos de 1 minuto" }, { status: 429 });
+    return NextResponse.json({ ok: false, error: "Refreshed less than a minute ago" }, { status: 429 });
   }
 
   running = true;
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       ok: true,
       startedAt: new Date(lastRunAt).toISOString(),
       accounts: targets.map((a) => a.slug),
-      note: "Coleta disparada. O painel mostra a hora da última atualização por conta.",
+      note: "Collection triggered. The dashboard shows the last update time per account.",
     });
   } finally {
     running = false;

@@ -12,9 +12,9 @@ export async function GET() {
     locationId: a.locationId,
     credential: a.pitEnv
       ? process.env[a.pitEnv]
-        ? "configurada"
-        : "aguardando credencial"
-      : "fonte própria ou sem credencial",
+        ? "configured"
+        : "waiting for credential"
+      : "own source or no credential",
   }));
   return NextResponse.json({ accounts });
 }
