@@ -30,3 +30,5 @@ Abrir `/api/status` no domínio do projeto: cada conta mostra "configurada" ou "
 
 ## Observação importante
 As chaves que hoje estão no Hub do Lovable NÃO foram copiadas para cá de propósito: elas ficam em texto puro lá. O ideal é gerar um PIT novo por location para a v2 e, depois que a v2 estiver no ar, revogar os antigos.
+
+<!-- Redeploy 2026-11-22: ativar no Vercel as variáveis HL_PIT_* atualizadas (integrações próprias "Commander Center" por subconta, com contacts.write; token do Simpson Ltd recriado). Commit sem mudança de código. -->
