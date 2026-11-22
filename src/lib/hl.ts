@@ -79,6 +79,7 @@ export interface HLContact {
 }
 
 interface HLConversation {
+  id?: string;
   unreadCount?: number;
   lastMessageDate?: number;
   createdAt?: number;
@@ -88,12 +89,14 @@ interface HLConversation {
   lastMessageType?: string;
   lastMessageDirection?: string;
   type?: string;
+  messageTypes?: string[];
 }
 
 interface HLOpportunity {
   name?: string;
   status?: string;
   monetaryValue?: number;
+  pipelineId?: string;
   pipelineStageId?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -335,6 +338,7 @@ interface ContactScan {
   fakesAll: FakeItem[]; // quarentena da conta em 30d (até 30 itens)
   partnerTotal: number; // compradores Partner US$ 1 na janela buscada (só Magnetic Funnels US)
   partnerSeparated: number; // desses, quantos já têm a tag de separação no HighLevel
+  formSources30d: Record<string, number>; // contatos 30d por nome exato da origem de formulário
 }
 
 /** Deriva contadores, séries e listas a partir dos contatos já buscados. */
@@ -346,6 +350,7 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
   };
   const weekLeads: LeadItem[] = [];
   const fakesAll: FakeItem[] = [];
+  const formSources30d: Record<string, number> = {};
   let partnerTotal = 0;
   let partnerSeparated = 0;
   let goneCount = 0;
@@ -378,6 +383,12 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     if (age < 30 * day) {
       const b = sourceBucket(c);
       m.sourceCounts[b] = (m.sourceCounts[b] ?? 0) + 1;
+      // Origem de formulário pelo nome exato: é o KPI da Blue Steel
+      // (pedidos de orçamento pelo formulário do site).
+      if ((c.source ?? "").toLowerCase().includes("form")) {
+        const label = c.source || "Form";
+        formSources30d[label] = (formSources30d[label] ?? 0) + 1;
+      }
     }
     if (age < day) m.leadsToday++;
     if (ageDays === 1) m.leadsYesterday++;
@@ -411,7 +422,7 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
   // painel; desconta os que sumiram dentro da janela varrida (nas
   // contas dentro da janela de 500, é o número exato).
   m.totalContacts = Math.max(0, total - goneCount);
-  return { m, weekLeads, fakesAll, partnerTotal, partnerSeparated };
+  return { m, weekLeads, fakesAll, partnerTotal, partnerSeparated, formSources30d };
 }
 
 export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
@@ -502,6 +513,37 @@ export interface OpportunityItem {
   created: string | null;
 }
 
+/**
+ * Resumo de ligações da conta, a partir das conversas (a busca de
+ * conversas entrega tipo, direção e data da última mensagem; o corpo
+ * e a duração de cada ligação ficam atrás do escopo de mensagens,
+ * que hoje responde 401). Janela: as 100 conversas mais recentes
+ * mescladas com as 100 conversas de telefone mais recentes.
+ */
+export interface CallSummary {
+  windowSize: number; // conversas na janela mesclada
+  callConversations: number; // conversas com ligação na janela
+  lastWasCall: number; // dessas, quantas a última atividade foi a ligação
+  inbound: number;
+  outbound: number;
+  unknownDirection: number;
+  activity7d: number; // conversas de ligação com atividade nos últimos 7 dias
+  activity30d: number;
+}
+
+export interface WonSummary {
+  count: number; // oportunidades ganhas na janela lida (100 mais recentes)
+  value: number;
+  last30Count: number; // ganhas com mudança de status nos últimos 30 dias
+  last30Value: number;
+  lostCount: number;
+}
+
+export interface StageGroup {
+  pipeline: string;
+  stages: { name: string; count: number; value: number }[];
+}
+
 export interface AccountDetail {
   metrics: AccountMetrics;
   weekLeads: LeadItem[]; // lista completa dos leads limpos dos últimos 7 dias
@@ -515,6 +557,10 @@ export interface AccountDetail {
   opportunities: OpportunityItem[]; // abertas, maior valor primeiro
   partnerTotal: number; // compradores Partner US$ 1 escondidos (só Magnetic Funnels US)
   partnerSeparated: number; // desses, já separados no HighLevel (tag partner-usd1)
+  calls: CallSummary | null; // null quando a busca de conversas falhou
+  won: WonSummary | null; // null quando a busca de oportunidades falhou
+  stageGroups: StageGroup[]; // distribuição das abertas por pipeline e etapa
+  formSources30d: { label: string; count: number }[]; // origens de formulário, 30d
 }
 
 function fmtChicago(ts: number): string {
@@ -563,7 +609,11 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
   const day = 86_400_000;
   const { contacts, total } = await withRetry(() => fetchContacts(a, pit, now));
   const marks = await loadMarks(a);
-  const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scanContacts(a, contacts, total, now, marks);
+  const scan = scanContacts(a, contacts, total, now, marks);
+  const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scan;
+  const formSources30d = Object.entries(scan.formSources30d)
+    .map(([label, count]) => ({ label, count }))
+    .sort((x, y) => y.count - x.count);
 
   let waiting: ConversationItem[] = [];
   let waitingHidden = 0;
@@ -571,6 +621,7 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
   let conversationsLoaded = 0;
   let conversationsTotal: number | null = null;
   let upToDate = 0;
+  let calls: CallSummary | null = null;
   try {
     const conv = (await withRetry(() => hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit), 2)) as {
       conversations?: HLConversation[];
@@ -615,27 +666,113 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
       }
     }
     waiting = waiting.sort((x, y) => y.unreadCount - x.unreadCount);
+
+    // Ligações: aprofunda a janela com a busca filtrada por telefone e
+    // mescla por id (se a API ignorar o filtro, a mescla é inofensiva).
+    // Conversa de ligação = última mensagem foi ligação OU a conversa
+    // contém ligações (messageTypes). Duração e IA x humano ficam
+    // atrás do escopo de mensagens (401 hoje): ver services.ts.
+    try {
+      const phone = (await withRetry(
+        () => hlGet(`/conversations/search?locationId=${a.locationId}&limit=100&type=TYPE_PHONE`, pit), 2,
+      )) as { conversations?: HLConversation[] };
+      const byId = new Map<string, HLConversation>();
+      for (const cv of list) if (cv.id) byId.set(cv.id, cv);
+      for (const cv of phone.conversations ?? []) {
+        if (cv.contactId && goneIds.has(cv.contactId)) continue;
+        if (cv.id && !byId.has(cv.id)) byId.set(cv.id, cv);
+      }
+      const merged = [...byId.values()];
+      const isCall = (cv: HLConversation) =>
+        cv.lastMessageType === "TYPE_CALL" || (cv.messageTypes ?? []).includes("TYPE_CALL");
+      const callConvs = merged.filter(isCall);
+      calls = {
+        windowSize: merged.length,
+        callConversations: callConvs.length,
+        lastWasCall: callConvs.filter((cv) => cv.lastMessageType === "TYPE_CALL").length,
+        inbound: callConvs.filter((cv) => cv.lastMessageDirection === "inbound").length,
+        outbound: callConvs.filter((cv) => cv.lastMessageDirection === "outbound").length,
+        unknownDirection: callConvs.filter(
+          (cv) => cv.lastMessageDirection !== "inbound" && cv.lastMessageDirection !== "outbound",
+        ).length,
+        activity7d: callConvs.filter((cv) => {
+          const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
+          return last > 0 && now - last < 7 * day;
+        }).length,
+        activity30d: callConvs.filter((cv) => {
+          const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
+          return last > 0 && now - last < 30 * day;
+        }).length,
+      };
+    } catch { /* sem a busca de telefone, o resumo de ligações fica nulo */ }
   } catch { /* conversas são bônus, não derrubam a conta */ }
 
   let opportunities: OpportunityItem[] = [];
+  let won: WonSummary | null = null;
+  let stageGroups: StageGroup[] = [];
   try {
     const opp = (await withRetry(() => hlGet(`/opportunities/search?location_id=${a.locationId}&limit=100`, pit), 2)) as {
       opportunities?: HLOpportunity[];
     };
-    const open = (opp.opportunities ?? []).filter((o) => (o.status ?? "open") === "open");
+    const all = opp.opportunities ?? [];
+    const open = all.filter((o) => (o.status ?? "open") === "open");
 
-    // Nome das etapas, para mostrar onde cada oportunidade está.
+    // Nome das etapas e dos pipelines, para mostrar onde cada
+    // oportunidade está e montar a distribuição por etapa.
     const stageName = new Map<string, string>();
-    if (open.some((o) => o.pipelineStageId)) {
+    const stagePipeline = new Map<string, string>();
+    if (all.some((o) => o.pipelineStageId)) {
       try {
         const pl = (await hlGet(`/opportunities/pipelines?locationId=${a.locationId}`, pit)) as {
-          pipelines?: Array<{ stages?: Array<{ id: string; name: string }> }>;
+          pipelines?: Array<{ name?: string; stages?: Array<{ id: string; name: string }> }>;
         };
         for (const p of pl.pipelines ?? []) {
-          for (const s of p.stages ?? []) stageName.set(s.id, s.name);
+          for (const s of p.stages ?? []) {
+            stageName.set(s.id, s.name);
+            stagePipeline.set(s.id, p.name ?? "Pipeline");
+          }
         }
       } catch { /* sem pipelines, a lista sai sem o nome da etapa */ }
     }
+
+    // Ganhas e perdidas na janela lida (KPI de fechamento, ex.:
+    // aluguéis fechados da Globalaser).
+    const w: WonSummary = { count: 0, value: 0, last30Count: 0, last30Value: 0, lostCount: 0 };
+    for (const o of all) {
+      const st = o.status ?? "open";
+      if (st === "won") {
+        w.count++;
+        w.value += o.monetaryValue ?? 0;
+        const changed = new Date(o.lastStatusChangeAt ?? o.updatedAt ?? 0).getTime();
+        if (changed && now - changed < 30 * day) {
+          w.last30Count++;
+          w.last30Value += o.monetaryValue ?? 0;
+        }
+      } else if (st === "lost") {
+        w.lostCount++;
+      }
+    }
+    won = w;
+
+    // Distribuição das abertas por pipeline e etapa (na Globalaser,
+    // as etapas do ALUGUER são as faixas de score do lead).
+    const groups = new Map<string, Map<string, { count: number; value: number }>>();
+    for (const o of open) {
+      const pipeline = o.pipelineStageId ? stagePipeline.get(o.pipelineStageId) ?? "Pipeline" : "Pipeline";
+      const stage = o.pipelineStageId ? stageName.get(o.pipelineStageId) ?? "No stage" : "No stage";
+      if (!groups.has(pipeline)) groups.set(pipeline, new Map());
+      const g = groups.get(pipeline)!;
+      const cur = g.get(stage) ?? { count: 0, value: 0 };
+      cur.count++;
+      cur.value += o.monetaryValue ?? 0;
+      g.set(stage, cur);
+    }
+    stageGroups = [...groups.entries()].map(([pipeline, stages]) => ({
+      pipeline,
+      stages: [...stages.entries()]
+        .map(([name, v]) => ({ name, count: v.count, value: v.value }))
+        .sort((x, y) => y.count - x.count),
+    }));
 
     for (const o of open) {
       const value = o.monetaryValue ?? 0;
@@ -677,6 +814,10 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
     opportunities,
     partnerTotal,
     partnerSeparated,
+    calls,
+    won,
+    stageGroups,
+    formSources30d,
   };
 }
 

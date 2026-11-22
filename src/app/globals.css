@@ -180,6 +180,12 @@ a.rank-row:hover { background: #1D1713; }
 .verifyline b { color: #FCE3D4; }
 .verifyline b.vok { color: #7CE3A8; }
 
+/* Página Social */
+.socialgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+.navlinks { display: inline-flex; gap: 14px; margin-left: 14px; }
+.navlinks a { color: #F0772E; font-weight: 600; text-decoration: none; }
+.navlinks a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
 /* Rodapé e roadmap */
 .steps { font-size: 13.5px; line-height: 2; color: #CBBBAE; list-style: none; }
 .steps .done { color: #7CE3A8; font-weight: 700; }

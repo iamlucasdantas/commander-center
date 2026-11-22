@@ -8,6 +8,7 @@ import {
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
 import LogPanel from "@/components/LogPanel";
+import { getAnalytics } from "@/lib/analytics";
 import { getState, stateConfigured } from "@/lib/state";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
@@ -182,6 +183,17 @@ export default async function Home() {
 
   const logEntries = stateConfigured() ? (await getState(0)).log : [];
 
+  // Snapshots externos (coletor diário): social e sites.
+  const analytics = await getAnalytics();
+  const socialCards = analytics.social?.cards ?? [];
+  const socialFollowers = socialCards.reduce((s, c) => s + (c.followers ?? 0), 0);
+  const socialViews = socialCards.reduce((s, c) => s + (c.views28 ?? 0), 0);
+  const siteRows = contas
+    .map((a) => ({ a, ga4: analytics.sites[a.slug]?.ga4 }))
+    .filter((r) => r.ga4?.hasData)
+    .sort((x, y) => (y.ga4!.sessions28 ?? 0) - (x.ga4!.sessions28 ?? 0));
+  const siteSessions = siteRows.reduce((s, r) => s + (r.ga4?.sessions28 ?? 0), 0);
+
   const groups: Array<{ title: string; kinds: Account["kind"][] }> = [
     { title: "Company & community", kinds: ["empresa", "comunidade"] },
     { title: "Clients", kinds: ["cliente"] },
@@ -199,7 +211,13 @@ export default async function Home() {
         </div>
         <span style={{ marginLeft: "auto" }}><RefreshButton /></span>
       </header>
-      <p className="sub">Updated {now} · {okMetrics.length} of {conectaveis.length} locations live · clean leads only, fakes excluded</p>
+      <p className="sub">
+        Updated {now} · {okMetrics.length} of {conectaveis.length} locations live · clean leads only, fakes excluded
+        <span className="navlinks">
+          <Link href="/social">Social</Link>
+          <Link href="/account/saazid">SAAZID · YouTube</Link>
+        </span>
+      </p>
 
       <div className="hero">
         <div className="hero-main">
@@ -257,6 +275,52 @@ export default async function Home() {
             <Ring pct={conectaveis.length ? (okMetrics.length / conectaveis.length) * 100 : 0} color="#EB611C" center={`${okMetrics.length}/${conectaveis.length}`} size={52} />
             {pendingTokens > 0 ? <div className="warn">{pendingTokens} waiting<br />for token</div> : <div className="up">all locations<br />connected</div>}
           </div>
+        </div>
+      </div>
+
+      <div className="grid2">
+        <div className="card">
+          <div className="label">Social · connected profiles</div>
+          {socialCards.length ? (
+            <>
+              <div className="value">{socialFollowers.toLocaleString("en-US")}</div>
+              <div className="hint">
+                followers across {socialCards.length} profiles · {socialViews.toLocaleString("en-US")} views in 28 days
+              </div>
+              <div style={{ marginTop: 10 }}>
+                {[...socialCards].sort((x, y) => (y.followers ?? 0) - (x.followers ?? 0)).slice(0, 3).map((c) => (
+                  <div className="conv" key={`${c.network}-${c.handle}`}>
+                    <span>{c.handle}<small>{c.brand}</small></span>
+                    <b>{(c.followers ?? 0).toLocaleString("en-US")}</b>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Link className="acctlink" href="/social" style={{ color: "#F0772E", fontWeight: 600, fontSize: 13 }}>Open the Social page →</Link>
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>No social snapshot yet. The daily collector fills this in.</p>
+          )}
+        </div>
+        <div className="card">
+          <div className="label">Websites · GA4 sessions, 28 days</div>
+          {siteRows.length ? (
+            <>
+              <div className="value">{siteSessions.toLocaleString("en-US")}</div>
+              <div className="hint">sessions across {siteRows.length} sites with GA4 data</div>
+              <div style={{ marginTop: 10 }}>
+                {siteRows.slice(0, 3).map(({ a, ga4 }) => (
+                  <div className="conv" key={a.slug}>
+                    <span><Link className="acctlink" href={`/account/${a.slug}`}>{shortName(a)}</Link><small>website block on the account page</small></span>
+                    <b>{(ga4?.sessions28 ?? 0).toLocaleString("en-US")}</b>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>No GA4 snapshot with data yet.</p>
+          )}
         </div>
       </div>
 
@@ -404,9 +468,12 @@ export default async function Home() {
         <ul className="steps">
           <li><span className="done">✓</span> Live HighLevel collection, fakes excluded</li>
           <li><span className="done">✓</span> Decision layer: attention queue, health rings, 30d trends, waterfall</li>
-          <li><span className="todo">→</span> Tokens for the 2 community accounts (9 of 9 locations)</li>
-          <li><span className="todo">→</span> GA4 traffic line crossed with leads</li>
-          <li><span className="todo">→</span> Persisted snapshots and real per-account goals</li>
+          <li><span className="done">✓</span> All 21 locations connected through private integrations</li>
+          <li><span className="done">✓</span> Per-account service blocks, from each client&apos;s contracted service</li>
+          <li><span className="done">✓</span> Website block on every account (GA4 + Search Console), collected daily</li>
+          <li><span className="done">✓</span> Social page and the SAAZID YouTube page, from daily snapshots</li>
+          <li><span className="todo">→</span> Real per-account goals (waiting on Lucas&apos;s targets) and persisted lead snapshots</li>
+          <li><span className="todo">→</span> Custom domain for this panel, after Lucas approves the analytics build</li>
         </ul>
       </div>
 
