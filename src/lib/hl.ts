@@ -126,9 +126,14 @@ function isEmailOnly(c: HLContact): boolean {
 export const PARTNER_ACCOUNT_SLUG = "magnetic-funnels-us";
 export const PARTNER_SEPARATED_TAG = "partner-usd1";
 
+/** Marcador Partner Plan no `source` do contato, independente da conta. */
+export function isPartnerPlanContact(c: HLContact): boolean {
+  return (c.source ?? "").toLowerCase().includes("partner plan");
+}
+
 export function isPartnerBuyer(a: Account, c: HLContact): boolean {
   if (a.slug !== PARTNER_ACCOUNT_SLUG) return false;
-  return (c.source ?? "").toLowerCase().includes("partner plan");
+  return isPartnerPlanContact(c);
 }
 
 /** Balde de origem para o donut de composição (30d). */
@@ -542,12 +547,20 @@ export async function fetchContactsLive(a: Account): Promise<HLContact[]> {
  * Não verificados dos últimos 7 dias: a MESMA classificação da lista da
  * página da conta (não é fake, origem é email avulso). É este conjunto, e
  * só ele, que a exclusão em massa pode tocar.
+ *
+ * EXCLUSÃO DURA (regra do Lucas, 2026-11-22): contato com "Partner Plan"
+ * no source NUNCA é excluível, em qualquer conta, sem exceção. Quem passou
+ * pelo plano Partner continua no sistema; ele só fica fora da
+ * visualização da Magnetic Funnels. Esta trava é explícita e não depende
+ * de como o resto da classificação evoluir: mesmo que um source do tipo
+ * "Partner Plan - Email ..." um dia caia em isEmailOnly, ele sai daqui.
  */
 export function unverifiedWeekContacts(contacts: HLContact[], now: number): HLContact[] {
   const day = 86_400_000;
   return contacts.filter((c) => {
     const t = new Date(c.dateAdded ?? 0).getTime();
     if (!t || now - t >= 7 * day) return false;
+    if (isPartnerPlanContact(c)) return false; // trava dura: Partner nunca é excluível
     return !isFake(c) && isEmailOnly(c);
   });
 }

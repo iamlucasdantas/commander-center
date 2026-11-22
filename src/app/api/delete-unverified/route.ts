@@ -15,7 +15,9 @@ import { accountPit, deleteContact, isOkStatus, isPermissionError, sleep } from 
 //              resultado: sem registro, não há exclusão.
 // Escopo da ação: não verificados dos últimos 7 dias, exatamente o
 // conjunto que o filtro "Unverified" da página da conta mostra. Fakes
-// (quarentena) e verificados nunca entram.
+// (quarentena) e verificados nunca entram. Contatos do Partner Plan
+// também nunca entram: exclusão dura em unverifiedWeekContacts (hl.ts),
+// porque quem passou pelo Partner continua no sistema (regra do Lucas).
 export const maxDuration = 60;
 
 const MAX_BATCH = 200;
