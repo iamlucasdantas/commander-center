@@ -6,7 +6,6 @@ import { accountHealth, money, moneyShort } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
 import PartnerSeparate from "@/components/PartnerSeparate";
-import VerifyLeads from "@/components/VerifyLeads";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -67,10 +66,6 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
         </div>
       ) : (
         <>
-          <div className="verifybar">
-            <VerifyLeads slug={a.slug} showPartner={a.slug === PARTNER_ACCOUNT_SLUG} />
-          </div>
-
           <div className="card healthstrip">
             <Ring pct={h.score} color={HEALTH_COLOR[h.level]} center={`${h.score}`} size={64} />
             <div>
@@ -143,7 +138,7 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
 
           <h2>New leads this week · {detail.weekLeads.length}</h2>
           <div className="card">
-            <LeadList leads={detail.weekLeads} deleteSlug={a.slug} emptyText="No new leads in the last 7 days." />
+            <LeadList leads={detail.weekLeads} deleteSlug={a.slug} verifySlug={a.slug} emptyText="No new leads in the last 7 days." />
           </div>
 
           <h2>Conversations</h2>

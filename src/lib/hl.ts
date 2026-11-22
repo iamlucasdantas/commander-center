@@ -19,6 +19,7 @@ export interface LeadItem {
   when: string;
   sourceLabel: string;
   emailOnly: boolean;
+  manuallyVerified: boolean; // tag "lead-verified" aplicada à mão pelo Lucas
   email: string | null;
   phone: string | null;
 }
@@ -143,13 +144,24 @@ export function isPartnerBuyer(a: Account, c: HLContact): boolean {
 // leads, pela exclusão, pela verificação e (desde 2026-11-22) pelo
 // filtro das conversas não lidas:
 //   partner    -> comprador Partner US$ 1 (só Magnetic Funnels US)
+//   verified   -> verificação MANUAL do Lucas: contato com a tag
+//                 "lead-verified" no HighLevel é verificado em tudo,
+//                 por cima da regra automática de origem
 //   fake       -> nome casa com os padrões de fake (quarentena)
 //   unverified -> origem é só email avulso (ou source vazio)
 //   verified   -> origem real: form, calendar, chat, workflow etc.
 export type ContactClass = "verified" | "unverified" | "fake" | "partner";
 
+/** Tag que a verificação manual aplica no contato (rota /api/verify-contact). */
+export const LEAD_VERIFIED_TAG = "lead-verified";
+
+export function hasLeadVerifiedTag(c: HLContact): boolean {
+  return (c.tags ?? []).includes(LEAD_VERIFIED_TAG);
+}
+
 export function classifyContact(a: Account, c: HLContact): ContactClass {
   if (isPartnerBuyer(a, c)) return "partner";
+  if (hasLeadVerifiedTag(c)) return "verified";
   if (isFake(c)) return "fake";
   if (isEmailOnly(c)) return "unverified";
   return "verified";
@@ -321,12 +333,16 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     if (ageDays >= 0 && ageDays < 30) m.leadsByDay30[29 - ageDays]++;
     if (ageDays >= 30 && ageDays < 60) m.leadsByDayPrev30[59 - ageDays]++;
     if (age < 7 * day) {
+      const tagged = hasLeadVerifiedTag(c);
       const item: LeadItem = {
         id: c.id,
         name: contactName(c),
         when: new Date(t).toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Chicago" }),
         sourceLabel: c.source || (isEmailOnly(c) ? "stray email" : "no source"),
-        emailOnly: isEmailOnly(c),
+        // Verificação manual vence a origem: quem tem a tag conta como
+        // verificado nas listas e nos filtros (regra do Lucas, 2026-11-22).
+        emailOnly: isEmailOnly(c) && !tagged,
+        manuallyVerified: tagged,
         email: c.email ?? null,
         phone: c.phone ?? null,
       };
@@ -648,6 +664,7 @@ export function unverifiedWeekContacts(contacts: HLContact[], now: number): HLCo
     const t = new Date(c.dateAdded ?? 0).getTime();
     if (!t || now - t >= 7 * day) return false;
     if (isPartnerPlanContact(c)) return false; // trava dura: Partner nunca é excluível
+    if (hasLeadVerifiedTag(c)) return false; // verificado à mão nunca é excluível
     return !isFake(c) && isEmailOnly(c);
   });
 }

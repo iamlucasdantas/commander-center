@@ -7,7 +7,6 @@ import {
 } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
-import VerifyAllLeads from "@/components/VerifyAllLeads";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -197,10 +196,6 @@ export default async function Home() {
         <span style={{ marginLeft: "auto" }}><RefreshButton /></span>
       </header>
       <p className="sub">Updated {now} · {okMetrics.length} of {conectaveis.length} locations live · clean leads only, fakes excluded</p>
-
-      <div className="verifybar">
-        <VerifyAllLeads accounts={ligadas.map((a) => ({ slug: a.slug, name: a.name }))} />
-      </div>
 
       <div className="hero">
         <div className="hero-main">
