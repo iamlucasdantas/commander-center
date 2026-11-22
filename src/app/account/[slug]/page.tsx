@@ -168,7 +168,8 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
               )}
               {detail.waitingHidden > 0 && (
                 <p className="hint" style={{ marginTop: 8 }}>
-                  {detail.waitingHidden} waiting conversation{detail.waitingHidden === 1 ? "" : "s"} hidden · this list only shows verified leads.
+                  {detail.waitingHidden} waiting conversation{detail.waitingHidden === 1 ? "" : "s"} hidden · this list only shows verified leads
+                  {detail.waitingHiddenUnknown > 0 ? ` (${detail.waitingHiddenUnknown} from contacts outside the recent window)` : ""}.
                 </p>
               )}
             </div>
