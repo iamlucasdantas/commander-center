@@ -178,7 +178,7 @@ export async function ingestAnalytics(payload: Partial<AnalyticsState>): Promise
       working.youtube = working.youtube ?? {};
       for (const [k, v] of Object.entries(payload.youtube)) {
         if (!v) continue;
-        const prev = working.youtube[k];
+        const prev: YoutubeSnapshot | undefined = working.youtube[k];
         const history = [...(prev?.history ?? [])];
         const today = v.collectedAt.slice(0, 10);
         const point = { date: today, subscribers: v.subscribers, totalViews: v.totalViews };
