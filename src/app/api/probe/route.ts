@@ -169,6 +169,25 @@ export async function GET(req: Request) {
     }),
   };
 
+  // ---- definições dos campos customizados (id -> nome/chave)
+  const cfDef = await hl(pit, `/locations/${loc}/customFields`);
+  const cfList = isObj(cfDef.data) && Array.isArray(cfDef.data.customFields) ? cfDef.data.customFields : [];
+  out.customFieldDefs = {
+    status: cfDef.status,
+    list: cfList.slice(0, 60).map((f) => (isObj(f) ? { id: f.id ?? null, name: f.name ?? null, fieldKey: f.fieldKey ?? null, dataType: f.dataType ?? null } : null)),
+  };
+
+  // ---- oportunidades: contagem por status (a página só olha abertas)
+  const opp = await hl(pit, `/opportunities/search?location_id=${loc}&limit=100`);
+  const oppList = isObj(opp.data) && Array.isArray(opp.data.opportunities) ? opp.data.opportunities : [];
+  const statusCount: Record<string, number> = {};
+  for (const o of oppList) {
+    if (!isObj(o)) continue;
+    const s = String(o.status ?? "?");
+    statusCount[s] = (statusCount[s] ?? 0) + 1;
+  }
+  out.opportunities = { status: opp.status, loaded: oppList.length, statusCount };
+
   // ---- endpoints candidatos: reputação, funis, sites (só o status)
   const attempts: Record<string, number> = {};
   const tries: Array<[string, string]> = [
