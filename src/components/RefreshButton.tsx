@@ -29,7 +29,7 @@ export default function RefreshButton({ slug, mini }: { slug?: string; mini?: bo
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <button className={mini ? "btn mini" : "btn"} onClick={run} disabled={state === "running"}>
-        {state === "running" ? "Refreshing..." : mini ? "Refresh" : "↻ Refresh now"}
+        {state === "running" ? "Refreshing..." : mini ? "Refresh" : "Refresh now"}
       </button>
       {msg && <small style={{ color: state === "error" ? "#FF9D9D" : "#7CE3A8", fontSize: 12 }}>{msg}</small>}
     </span>

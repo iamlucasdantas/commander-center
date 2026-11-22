@@ -2,6 +2,10 @@
 // em health score por conta, fila de atenção ordenada por dinheiro em
 // risco e o feed "what changed". Funções puras, sem fetch: tudo sai dos
 // dados que hl.ts já coletou.
+//
+// Direção visual (Lucas, 2026-11-22): interface quase sem texto. Por isso
+// esta camada entrega números, escores e microrrótulos (até ~4 palavras);
+// frases longas só vivem nos tooltips.
 import type { Account } from "./accounts";
 import type { AccountMetrics } from "./hl";
 
@@ -20,12 +24,18 @@ export function money(v: number): string {
   return v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
+/** $4,200 → "$4.2k", $850 → "$850". Para microrrótulos e barras. */
+export function moneyShort(v: number): string {
+  if (v >= 1000) return `$${(v / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return `$${Math.round(v)}`;
+}
+
 /** Fração da média do portfólio (leads 7d das contas vivas). */
 export function vsAverage(value: number, average: number): string | null {
   if (!average || average <= 0) return null;
   const pct = Math.round((value / average - 1) * 100);
-  if (pct === 0) return "at the portfolio average";
-  return pct > 0 ? `${pct}% above the portfolio average` : `${Math.abs(pct)}% below the portfolio average`;
+  if (pct === 0) return "at portfolio average";
+  return pct > 0 ? `+${pct}% vs portfolio average` : `${pct}% vs portfolio average`;
 }
 
 // ---------------------------------------------------------------- health
@@ -35,55 +45,67 @@ export type HealthLevel = "green" | "yellow" | "red";
 export interface Health {
   level: HealthLevel;
   label: string; // "Red", "Yellow", "Green"
-  reasons: string[]; // motivos escritos, sempre presentes
+  score: number; // 0-100, alimenta o anel visual
+  reasons: string[]; // motivos completos (tooltip)
+  short: string; // microrrazão de até ~4 palavras, visível na linha
 }
 
 export function accountHealth(m: AccountMetrics): Health {
   const reasons: string[] = [];
-  let score = 0; // 0 = ok, 1 = atenção, 2 = problema
+  const shorts: string[] = [];
+  let score = 100;
+  let worst = 0; // 0 ok, 1 atenção, 2 problema
 
   if (m.unread >= 100) {
     reasons.push(`${m.unread} unread conversations waiting`);
-    score = Math.max(score, 2);
+    shorts.push(`${m.unread} unread`);
+    score -= 45; worst = Math.max(worst, 2);
   } else if (m.unread >= 25) {
     reasons.push(`${m.unread} unread conversations waiting`);
-    score = Math.max(score, 1);
+    shorts.push(`${m.unread} unread`);
+    score -= 25; worst = Math.max(worst, 1);
   } else if (m.unread > 0) {
     reasons.push(`${m.unread} unread conversation${m.unread === 1 ? "" : "s"} waiting`);
+    shorts.push(`${m.unread} unread`);
+    score -= 8;
   }
 
   const drop = m.leadsPrev7d > 0 ? (m.leads7d - m.leadsPrev7d) / m.leadsPrev7d : null;
   if (m.leadsPrev7d >= 5 && drop !== null && drop <= -0.5) {
     reasons.push(`leads down ${Math.abs(Math.round(drop * 100))}% week over week (${m.leadsPrev7d} to ${m.leads7d})`);
-    score = Math.max(score, 2);
+    shorts.push(`leads ${Math.round(drop * 100)}% WoW`);
+    score -= 35; worst = Math.max(worst, 2);
   } else if (m.leadsPrev7d >= 3 && drop !== null && drop <= -0.2) {
     reasons.push(`leads down ${Math.abs(Math.round(drop * 100))}% week over week (${m.leadsPrev7d} to ${m.leads7d})`);
-    score = Math.max(score, 1);
+    shorts.push(`leads ${Math.round(drop * 100)}% WoW`);
+    score -= 18; worst = Math.max(worst, 1);
   }
 
   if (m.leads7d === 0 && m.leadsPrev7d >= 3) {
     reasons.push("no new leads this week");
-    score = Math.max(score, 2);
+    shorts.push("zero leads this week");
+    score -= 35; worst = Math.max(worst, 2);
   } else if (m.leads7d === 0 && m.totalContacts > 0) {
     reasons.push("no new leads this week");
-    score = Math.max(score, 1);
+    shorts.push("zero leads this week");
+    score -= 12; worst = Math.max(worst, 1);
   }
 
-  if (m.oppStaleValue >= 2000) {
+  if (m.oppStaleValue >= 500) {
     reasons.push(`${money(m.oppStaleValue)} in open pipeline idle for 14+ days`);
-    score = Math.max(score, 1);
-  } else if (m.oppStaleValue >= 500) {
-    reasons.push(`${money(m.oppStaleValue)} in open pipeline idle for 14+ days`);
-    score = Math.max(score, 1);
+    shorts.push(`${moneyShort(m.oppStaleValue)} idle pipeline`);
+    score -= m.oppStaleValue >= 2000 ? 15 : 8;
+    worst = Math.max(worst, 1);
   }
 
   if (reasons.length === 0) {
     reasons.push(m.leads7d > 0 ? "leads flowing, queue under control" : "quiet week, nothing waiting");
+    shorts.push(m.leads7d > 0 ? "flowing" : "quiet");
   }
 
-  const level: HealthLevel = score >= 2 ? "red" : score === 1 ? "yellow" : "green";
+  const level: HealthLevel = worst >= 2 ? "red" : worst === 1 ? "yellow" : "green";
   const label = level === "red" ? "Red" : level === "yellow" ? "Yellow" : "Green";
-  return { level, label, reasons };
+  return { level, label, score: Math.max(5, Math.min(100, score)), reasons, short: shorts[0] };
 }
 
 // ---------------------------------------------------------- attention queue
@@ -91,11 +113,11 @@ export function accountHealth(m: AccountMetrics): Health {
 export interface AttentionItem {
   slug: string;
   account: string;
-  problem: string;
-  proof: string;
-  action: string;
+  headline: string; // microrrótulo do problema, ex.: "176 unread conversations"
+  metric: string; // número grande do item, ex.: "176" ou "$4.2k"
+  action: string; // microação, ex.: "Reply oldest first"
   severity: 1 | 2 | 3; // 3 = agir agora
-  moneyAtRisk: number;
+  moneyAtRisk: number; // alimenta a barra de dinheiro em risco
 }
 
 /**
@@ -110,9 +132,9 @@ export function buildAttentionQueue(data: AccountData[]): AttentionItem[] {
       items.push({
         slug: a.slug,
         account: a.name,
-        problem: `${m.unread} unread conversations waiting for a reply`,
-        proof: `${m.unreadConversations} open conversations, ${money(m.opportunitiesValue)} in open pipeline in this account${m.unreadHot7d ? `, ${m.unreadHot7d} of them active in the last 7 days` : ""}.`,
-        action: "Work the queue oldest first, money conversations before support.",
+        headline: `${m.unread} unread conversations`,
+        metric: `${m.unread}`,
+        action: "Reply oldest first",
         severity: m.unread >= 100 ? 3 : m.unread >= 25 ? 2 : 1,
         moneyAtRisk: m.opportunitiesValue,
       });
@@ -123,11 +145,9 @@ export function buildAttentionQueue(data: AccountData[]): AttentionItem[] {
       items.push({
         slug: a.slug,
         account: a.name,
-        problem: m.leads7d === 0
-          ? `Leads dropped to zero this week (was ${m.leadsPrev7d} last week)`
-          : `Leads fell ${Math.abs(Math.round(drop * 100))}% week over week (${m.leadsPrev7d} to ${m.leads7d})`,
-        proof: `${m.leads30d} clean leads in the last 30 days, ${m.totalContacts} contacts in the base.`,
-        action: "Check the lead source and the site form before spending more on traffic.",
+        headline: m.leads7d === 0 ? `Leads ${m.leadsPrev7d} → 0 this week` : `Leads down ${Math.abs(Math.round(drop * 100))}% WoW`,
+        metric: `${m.leadsPrev7d} → ${m.leads7d}`,
+        action: "Check source and form",
         severity: drop <= -0.6 || m.leads7d === 0 ? 3 : 2,
         moneyAtRisk: m.opportunitiesValue,
       });
@@ -137,9 +157,9 @@ export function buildAttentionQueue(data: AccountData[]): AttentionItem[] {
       items.push({
         slug: a.slug,
         account: a.name,
-        problem: `${money(m.oppStaleValue)} in open pipeline has not moved in 14+ days`,
-        proof: `${m.oppStaleCount} stale opportunit${m.oppStaleCount === 1 ? "y" : "ies"} out of ${m.opportunitiesOpen} open.`,
-        action: "Follow up today or close them, stale pipeline inflates the forecast.",
+        headline: `${moneyShort(m.oppStaleValue)} idle 14d+ · ${m.oppStaleCount} opportunit${m.oppStaleCount === 1 ? "y" : "ies"}`,
+        metric: moneyShort(m.oppStaleValue),
+        action: "Follow up or close",
         severity: m.oppStaleValue >= 5000 ? 2 : 1,
         moneyAtRisk: m.oppStaleValue,
       });
@@ -154,7 +174,7 @@ export function buildAttentionQueue(data: AccountData[]): AttentionItem[] {
 // ------------------------------------------------------------- what changed
 
 export interface ChangeItem {
-  text: string;
+  text: string; // linha compacta, ex.: "The Bar: leads 12 → 31 (+158%)"
   tone: "good" | "bad" | "neutral";
   impact: number; // ordena o feed: maior impacto primeiro
 }
@@ -165,7 +185,7 @@ export function buildWhatChanged(data: AccountData[], totals: { leads7d: number;
   const totalPct = pctChange(totals.leads7d, totals.leadsPrev7d);
   if (totalPct !== null && Math.abs(totalPct) >= 15 && totals.leadsPrev7d >= 5) {
     items.push({
-      text: `Portfolio leads: ${totals.leads7d} this week vs ${totals.leadsPrev7d} last week (${totalPct > 0 ? "+" : ""}${totalPct}%).`,
+      text: `Portfolio: leads ${totals.leadsPrev7d} → ${totals.leads7d} (${totalPct > 0 ? "+" : ""}${totalPct}%)`,
       tone: totalPct > 0 ? "good" : "bad",
       impact: Math.abs(totals.leads7d - totals.leadsPrev7d) + 100,
     });
@@ -175,15 +195,13 @@ export function buildWhatChanged(data: AccountData[], totals: { leads7d: number;
     const pct = pctChange(m.leads7d, m.leadsPrev7d);
     if (m.leadsPrev7d >= 3 && pct !== null && pct >= 50) {
       items.push({
-        text: `${a.name}: leads jumped from ${m.leadsPrev7d} to ${m.leads7d} (+${pct}%).`,
+        text: `${a.name}: leads ${m.leadsPrev7d} → ${m.leads7d} (+${pct}%)`,
         tone: "good",
         impact: Math.abs(m.leads7d - m.leadsPrev7d) + 40,
       });
     } else if (m.leadsPrev7d >= 3 && pct !== null && pct <= -40) {
       items.push({
-        text: m.leads7d === 0
-          ? `${a.name}: no new leads this week (was ${m.leadsPrev7d} last week).`
-          : `${a.name}: leads fell from ${m.leadsPrev7d} to ${m.leads7d} (${pct}%).`,
+        text: `${a.name}: leads ${m.leadsPrev7d} → ${m.leads7d} (${pct}%)`,
         tone: "bad",
         impact: Math.abs(m.leads7d - m.leadsPrev7d) + 40,
       });
@@ -191,7 +209,7 @@ export function buildWhatChanged(data: AccountData[], totals: { leads7d: number;
 
     if (m.unreadHot7d >= 20) {
       items.push({
-        text: `${a.name}: ${m.unreadHot7d} conversations went unread with activity in the last 7 days, the queue is growing.`,
+        text: `${a.name}: ${m.unreadHot7d} unread active this week`,
         tone: "bad",
         impact: m.unreadHot7d,
       });
@@ -199,7 +217,7 @@ export function buildWhatChanged(data: AccountData[], totals: { leads7d: number;
 
     if (m.oppNew7d >= 3) {
       items.push({
-        text: `${a.name}: ${m.oppNew7d} new open opportunities this week worth ${money(m.oppNew7dValue)}.`,
+        text: `${a.name}: ${m.oppNew7d} new opportunities · ${moneyShort(m.oppNew7dValue)}`,
         tone: "good",
         impact: m.oppNew7d * 5,
       });

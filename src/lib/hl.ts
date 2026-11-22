@@ -48,6 +48,8 @@ export interface AccountMetrics {
   oppNew7dValue: number;
   recentLeads: LeadItem[];
   fakes: FakeItem[];
+  fakeCount30d: number; // total de fakes em 30d (a lista é limitada a 10)
+  sourceCounts: Record<string, number>; // composição de fontes dos leads limpos, 30d
   leadsByDay: number[]; // 14 dias, do mais antigo ao mais novo
   leadsByDay30: number[]; // últimos 30 dias, do mais antigo ao mais novo
   leadsByDayPrev30: number[]; // 30 dias anteriores, do mais antigo ao mais novo
@@ -99,6 +101,19 @@ function isEmailOnly(c: HLContact): boolean {
   return !s || s.includes("email") || s.includes("inbound");
 }
 
+/** Balde de origem para o donut de composição (30d). */
+function sourceBucket(c: HLContact): string {
+  const s = (c.source ?? "").toLowerCase();
+  if (s.includes("form")) return "Form";
+  if (s.includes("calendar")) return "Calendar";
+  if (s.includes("chat")) return "Chat";
+  if (s.includes("workflow")) return "Workflow";
+  if (s.includes("survey")) return "Survey";
+  if (s.includes("quiz")) return "Quiz";
+  if (!s || s.includes("email") || s.includes("inbound")) return "Stray email";
+  return "Other";
+}
+
 async function hlGet(path: string, pit: string): Promise<unknown> {
   const res = await fetch(`${BASE}${path}`, {
     headers: {
@@ -120,7 +135,7 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
     totalContacts: 0, unread: 0, unreadConversations: 0, unreadHot7d: 0,
     opportunitiesOpen: 0, opportunitiesValue: 0,
     oppStaleCount: 0, oppStaleValue: 0, oppNew7d: 0, oppNew7dValue: 0,
-    recentLeads: [], fakes: [],
+    recentLeads: [], fakes: [], fakeCount30d: 0, sourceCounts: {},
     leadsByDay: Array(14).fill(0),
     leadsByDay30: Array(30).fill(0),
     leadsByDayPrev30: Array(30).fill(0),
@@ -162,10 +177,17 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       const ageDays = Math.floor(age / day);
       const fake = isFake(c);
       if (fake) {
-        if (age < 30 * day && m.fakes.length < 10) {
-          m.fakes.push({ name: contactName(c), account: a.name, reason: "company/service name, stray email" });
+        if (age < 30 * day) {
+          m.fakeCount30d++;
+          if (m.fakes.length < 10) {
+            m.fakes.push({ name: contactName(c), account: a.name, reason: "company/service name, stray email" });
+          }
         }
         continue;
+      }
+      if (age < 30 * day) {
+        const b = sourceBucket(c);
+        m.sourceCounts[b] = (m.sourceCounts[b] ?? 0) + 1;
       }
       if (age < day) m.leadsToday++;
       if (ageDays === 1) m.leadsYesterday++;
@@ -178,7 +200,7 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       if (m.recentLeads.length < 8 && age < 7 * day) {
         m.recentLeads.push({
           name: contactName(c),
-          when: new Date(t).toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
+          when: new Date(t).toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Chicago" }),
           sourceLabel: c.source || (isEmailOnly(c) ? "stray email" : "no source"),
           emailOnly: isEmailOnly(c),
         });
