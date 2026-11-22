@@ -146,6 +146,23 @@ a.rank-row:hover { background: #1D1713; }
 .conv .preview { color: #CBBBAE; display: block; font-size: 12.5px; margin-top: 3px; }
 .tag.unread { background: #3A1E1E; color: #FF9D9D; }
 
+/* Ações de escrita: excluir não verificados e separar Partner */
+.dangerzone { margin-top: 12px; border-top: 1px solid #3A2E14; padding-top: 12px; }
+.dbtn { background: #3A1E1E; color: #FF9D9D; border: 1px solid #6E2A2A; font-family: "Poppins", sans-serif; font-weight: 700; font-size: 12.5px; padding: 8px 14px; border-radius: 10px; cursor: pointer; }
+.dbtn:hover:not(:disabled) { background: #4A2323; color: #FFD9D9; }
+.dbtn:disabled { opacity: .5; cursor: default; }
+.dbtn.armed { background: linear-gradient(120deg, #C0240A, #8F1B06); color: #FFF7F2; border-color: transparent; }
+.confirmbox { background: #1D1214; border: 1px solid #6E2A2A; border-radius: 12px; padding: 13px 15px; margin-top: 10px; font-size: 13px; color: #F0DCD2; line-height: 1.55; }
+.confirmbox b { color: #FF9D9D; }
+.actionrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.checkline { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: #E8D9C8; margin-top: 10px; cursor: pointer; }
+.checkline input { margin-top: 2px; }
+.resultok { color: #7CE3A8; font-weight: 600; }
+.resultbad { color: #FF9D9D; font-weight: 600; }
+.partnercard { margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.partnerline { font-size: 13.5px; color: #CBBBAE; }
+.partnerline b { color: #FCE3D4; }
+
 /* Rodapé e roadmap */
 .steps { font-size: 13.5px; line-height: 2; color: #CBBBAE; list-style: none; }
 .steps .done { color: #7CE3A8; font-weight: 700; }

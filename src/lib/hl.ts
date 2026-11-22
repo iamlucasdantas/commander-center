@@ -14,10 +14,13 @@ import { FAKE_NAME_PATTERNS, type Account } from "./accounts";
 const BASE = "https://services.leadconnectorhq.com";
 
 export interface LeadItem {
+  id: string;
   name: string;
   when: string;
   sourceLabel: string;
   emailOnly: boolean;
+  email: string | null;
+  phone: string | null;
 }
 
 export interface FakeItem {
@@ -49,22 +52,25 @@ export interface AccountMetrics {
   recentLeads: LeadItem[];
   fakes: FakeItem[];
   fakeCount30d: number; // total de fakes em 30d (a lista é limitada a 10)
+  partnerHidden: number; // compradores Partner US$ 1 escondidos (só Magnetic Funnels US)
   sourceCounts: Record<string, number>; // composição de fontes dos leads limpos, 30d
   leadsByDay: number[]; // 14 dias, do mais antigo ao mais novo
   leadsByDay30: number[]; // últimos 30 dias, do mais antigo ao mais novo
   leadsByDayPrev30: number[]; // 30 dias anteriores, do mais antigo ao mais novo
 }
 
-interface HLContact {
+export interface HLContact {
   id: string;
   firstName?: string;
   lastName?: string;
   contactName?: string;
   name?: string;
   email?: string;
+  phone?: string;
   source?: string;
   dateAdded?: string;
   type?: string;
+  tags?: string[];
 }
 
 interface HLConversation {
@@ -109,6 +115,22 @@ function isEmailOnly(c: HLContact): boolean {
   return !s || s.includes("email") || s.includes("inbound");
 }
 
+// ------------------------------------------------- compradores Partner US$ 1
+// Regra do Lucas (2026-11-22): quem entra pelo plano Partner na conta
+// Magnetic Funnels (US) NÃO é lead dessa conta e não pode aparecer nas
+// listas, contagens ou métricas dela. Marcador sustentado pelos dados que
+// a coleta já traz: o campo `source` do contato vem com o nome do
+// formulário/página do Partner Plan ("Partner Plan - Magnetic Funnels
+// Brasil"), visível em 8 dos 31 leads da semana de 22/11/2026 na página
+// da conta. Classe separada, como os fakes, mas só nesta conta.
+export const PARTNER_ACCOUNT_SLUG = "magnetic-funnels-us";
+export const PARTNER_SEPARATED_TAG = "partner-usd1";
+
+export function isPartnerBuyer(a: Account, c: HLContact): boolean {
+  if (a.slug !== PARTNER_ACCOUNT_SLUG) return false;
+  return (c.source ?? "").toLowerCase().includes("partner plan");
+}
+
 /** Balde de origem para o donut de composição (30d). */
 function sourceBucket(c: HLContact): string {
   const s = (c.source ?? "").toLowerCase();
@@ -122,18 +144,26 @@ function sourceBucket(c: HLContact): string {
   return "Other";
 }
 
-async function hlGet(path: string, pit: string): Promise<unknown> {
-  const res = await fetch(`${BASE}${path}`, {
+async function hlFetch(path: string, pit: string, fresh = false): Promise<unknown> {
+  const init: RequestInit & { next?: { revalidate: number } } = {
     headers: {
       Authorization: `Bearer ${pit}`,
       Version: "2021-07-28",
       Accept: "application/json",
     },
-    next: { revalidate: 300 },
     signal: AbortSignal.timeout(9000),
-  });
+  };
+  // As rotas de ação (excluir, separar) leem sem cache: a classificação
+  // precisa refletir o HighLevel agora, não a foto de 5 minutos.
+  if (fresh) init.cache = "no-store";
+  else init.next = { revalidate: 300 };
+  const res = await fetch(`${BASE}${path}`, init);
   if (!res.ok) throw new Error(`HL ${res.status}`);
   return res.json();
+}
+
+async function hlGet(path: string, pit: string): Promise<unknown> {
+  return hlFetch(path, pit, false);
 }
 
 function emptyMetrics(slug: string): AccountMetrics {
@@ -143,7 +173,7 @@ function emptyMetrics(slug: string): AccountMetrics {
     totalContacts: 0, unread: 0, unreadConversations: 0, unreadHot7d: 0,
     opportunitiesOpen: 0, opportunitiesValue: 0,
     oppStaleCount: 0, oppStaleValue: 0, oppNew7d: 0, oppNew7dValue: 0,
-    recentLeads: [], fakes: [], fakeCount30d: 0, sourceCounts: {},
+    recentLeads: [], fakes: [], fakeCount30d: 0, partnerHidden: 0, sourceCounts: {},
     leadsByDay: Array(14).fill(0),
     leadsByDay30: Array(30).fill(0),
     leadsByDayPrev30: Array(30).fill(0),
@@ -151,7 +181,7 @@ function emptyMetrics(slug: string): AccountMetrics {
 }
 
 /** Busca os contatos recentes da location (até 5 páginas, janela de 60 dias). */
-async function fetchContacts(a: Account, pit: string, now: number): Promise<{ contacts: HLContact[]; total: number }> {
+async function fetchContacts(a: Account, pit: string, now: number, fresh = false): Promise<{ contacts: HLContact[]; total: number }> {
   const day = 86_400_000;
   const contacts: HLContact[] = [];
   let total = 0;
@@ -159,7 +189,7 @@ async function fetchContacts(a: Account, pit: string, now: number): Promise<{ co
   // 60 dias nas contas grandes. Para cedo se uma página inteira já está
   // fora da janela (a lista vem da mais recente para a mais antiga).
   for (let page = 1; page <= 5; page++) {
-    const data = (await hlGet(`/contacts/?locationId=${a.locationId}&limit=100&page=${page}`, pit)) as {
+    const data = (await hlFetch(`/contacts/?locationId=${a.locationId}&limit=100&page=${page}`, pit, fresh)) as {
       contacts?: HLContact[];
       meta?: { total?: number; nextPage?: number | null };
     };
@@ -178,6 +208,8 @@ interface ContactScan {
   m: AccountMetrics; // só os campos derivados de contatos; conversa/oportunidade zerados
   weekLeads: LeadItem[]; // TODOS os leads limpos dos últimos 7 dias, do mais novo ao mais antigo
   fakesAll: FakeItem[]; // quarentena da conta em 30d (até 30 itens)
+  partnerTotal: number; // compradores Partner US$ 1 na janela buscada (só Magnetic Funnels US)
+  partnerSeparated: number; // desses, quantos já têm a tag de separação no HighLevel
 }
 
 /** Deriva contadores, séries e listas a partir dos contatos já buscados. */
@@ -189,11 +221,21 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
   };
   const weekLeads: LeadItem[] = [];
   const fakesAll: FakeItem[] = [];
+  let partnerTotal = 0;
+  let partnerSeparated = 0;
   for (const c of contacts) {
     const t = new Date(c.dateAdded ?? 0).getTime();
     if (!t) continue;
     const age = now - t;
     const ageDays = Math.floor(age / day);
+    // Comprador Partner US$ 1: classe separada, fora de TODAS as métricas
+    // e listas de leads desta conta (regra do Lucas, 2026-11-22).
+    if (isPartnerBuyer(a, c)) {
+      m.partnerHidden++;
+      partnerTotal++;
+      if ((c.tags ?? []).includes(PARTNER_SEPARATED_TAG)) partnerSeparated++;
+      continue;
+    }
     const fake = isFake(c);
     if (fake) {
       if (age < 30 * day) {
@@ -218,17 +260,20 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     if (ageDays >= 30 && ageDays < 60) m.leadsByDayPrev30[59 - ageDays]++;
     if (age < 7 * day) {
       const item: LeadItem = {
+        id: c.id,
         name: contactName(c),
         when: new Date(t).toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Chicago" }),
         sourceLabel: c.source || (isEmailOnly(c) ? "stray email" : "no source"),
         emailOnly: isEmailOnly(c),
+        email: c.email ?? null,
+        phone: c.phone ?? null,
       };
       weekLeads.push(item);
       if (m.recentLeads.length < 8) m.recentLeads.push(item);
     }
   }
   m.leadsByDay = m.leadsByDay30.slice(16);
-  return { m, weekLeads, fakesAll };
+  return { m, weekLeads, fakesAll, partnerTotal, partnerSeparated };
 }
 
 export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
@@ -313,6 +358,8 @@ export interface AccountDetail {
   conversationsTotal: number | null; // total na location, quando a API informa
   upToDate: number; // conversas lidas sem nada pendente
   opportunities: OpportunityItem[]; // abertas, maior valor primeiro
+  partnerTotal: number; // compradores Partner US$ 1 escondidos (só Magnetic Funnels US)
+  partnerSeparated: number; // desses, já separados no HighLevel (tag partner-usd1)
 }
 
 function fmtChicago(ts: number): string {
@@ -360,7 +407,7 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
   const now = Date.now();
   const day = 86_400_000;
   const { contacts, total } = await fetchContacts(a, pit, now);
-  const { m, weekLeads, fakesAll } = scanContacts(a, contacts, total, now);
+  const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scanContacts(a, contacts, total, now);
 
   let waiting: ConversationItem[] = [];
   let conversationsLoaded = 0;
@@ -451,5 +498,61 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
     conversationsTotal,
     upToDate,
     opportunities,
+    partnerTotal,
+    partnerSeparated,
   };
+}
+
+// ------------------------------------------------- apoio às rotas de ação
+// As rotas /api/delete-unverified e /api/partner-separate usam estas
+// funções para classificar contatos FRESCOS (sem o cache de 5 minutos)
+// com exatamente as mesmas regras das listas do painel.
+
+export interface ContactRecord {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  source: string | null;
+  addedAt: string | null; // ISO
+}
+
+/** Registro de um contato para o log de exclusão/separação. */
+export function contactRecord(c: HLContact): ContactRecord {
+  return {
+    id: c.id,
+    name: contactName(c),
+    email: c.email ?? null,
+    phone: c.phone ?? null,
+    source: c.source ?? null,
+    addedAt: c.dateAdded ?? null,
+  };
+}
+
+/** Contatos da location lidos agora, sem cache. Lança erro se a busca falhar. */
+export async function fetchContactsLive(a: Account): Promise<HLContact[]> {
+  if (!a.locationId || !a.pitEnv) throw new Error("Account has no HighLevel location");
+  const pit = process.env[a.pitEnv];
+  if (!pit) throw new Error("Account token is not configured");
+  const { contacts } = await fetchContacts(a, pit, Date.now(), true);
+  return contacts;
+}
+
+/**
+ * Não verificados dos últimos 7 dias: a MESMA classificação da lista da
+ * página da conta (não é fake, origem é email avulso). É este conjunto, e
+ * só ele, que a exclusão em massa pode tocar.
+ */
+export function unverifiedWeekContacts(contacts: HLContact[], now: number): HLContact[] {
+  const day = 86_400_000;
+  return contacts.filter((c) => {
+    const t = new Date(c.dateAdded ?? 0).getTime();
+    if (!t || now - t >= 7 * day) return false;
+    return !isFake(c) && isEmailOnly(c);
+  });
+}
+
+/** Compradores Partner US$ 1 da conta (marcador: source do Partner Plan). */
+export function partnerBuyerContacts(a: Account, contacts: HLContact[]): HLContact[] {
+  return contacts.filter((c) => isPartnerBuyer(a, c));
 }

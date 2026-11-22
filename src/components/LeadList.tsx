@@ -2,12 +2,16 @@
 
 import { useMemo, useState } from "react";
 import type { LeadItem } from "@/lib/hl";
+import DeleteUnverified from "@/components/DeleteUnverified";
 
 type LeadFilter = "all" | "verified" | "unverified";
 
 interface Props {
   leads: LeadItem[];
   emptyText?: string;
+  /** Quando presente (só a página da conta passa), o resumo do grupo
+   *  Unverified ganha a ação "Delete unverified in HighLevel". */
+  deleteSlug?: string;
 }
 
 /**
@@ -20,14 +24,13 @@ interface Props {
  * O filtro é estado do cliente: alterna na hora, sem recarregar e sem
  * tocar no cache de 5 minutos da coleta.
  *
- * Pronto para a ação em massa futura sobre o grupo filtrado: o grupo
- * exibido fica isolado em `visible` e o resumo do grupo em
- * `unverifiedSources`; o botão de ação (ex.: excluir os não
- * verificados) entra ao lado do resumo quando o Lucas decidir o
- * alcance da exclusão (só no painel ou também no HighLevel).
- * Nenhuma exclusão acontece hoje.
+ * Ação em massa sobre o grupo filtrado: com `deleteSlug` (só a página
+ * da conta passa), o resumo do grupo Unverified mostra o botão de
+ * excluir os não verificados no HighLevel (decisão do Lucas, 2026-11-22:
+ * exclusão de verdade, em dois passos, com registro para download).
+ * A home não passa deleteSlug, então lá nada muda.
  */
-export default function LeadList({ leads, emptyText }: Props) {
+export default function LeadList({ leads, emptyText, deleteSlug }: Props) {
   const [filter, setFilter] = useState<LeadFilter>("all");
 
   const verified = useMemo(() => leads.filter((l) => !l.emailOnly), [leads]);
@@ -79,6 +82,7 @@ export default function LeadList({ leads, emptyText }: Props) {
               ))}
             </div>
           )}
+          {deleteSlug && unverified.length > 0 && <DeleteUnverified slug={deleteSlug} />}
         </div>
       )}
 

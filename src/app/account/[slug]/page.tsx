@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ACCOUNTS, KIND_LABEL, hasToken, notConnectedReason } from "@/lib/accounts";
-import { fetchAccountDetail, type AccountDetail } from "@/lib/hl";
+import { PARTNER_ACCOUNT_SLUG, fetchAccountDetail, type AccountDetail } from "@/lib/hl";
 import { accountHealth, money, moneyShort } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
+import PartnerSeparate from "@/components/PartnerSeparate";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -129,9 +130,15 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
             </div>
           </div>
 
+          {a.slug === PARTNER_ACCOUNT_SLUG && (
+            <div className="card partnercard">
+              <PartnerSeparate slug={a.slug} hidden={detail.partnerTotal} separated={detail.partnerSeparated} />
+            </div>
+          )}
+
           <h2>New leads this week · {detail.weekLeads.length}</h2>
           <div className="card">
-            <LeadList leads={detail.weekLeads} emptyText="No new leads in the last 7 days." />
+            <LeadList leads={detail.weekLeads} deleteSlug={a.slug} emptyText="No new leads in the last 7 days." />
           </div>
 
           <h2>Conversations</h2>
