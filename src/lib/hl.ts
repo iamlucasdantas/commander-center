@@ -10,8 +10,7 @@
 // Essas séries alimentam sparklines, comparações e o "what changed" sem
 // nenhuma chamada extra por conta.
 import { FAKE_NAME_PATTERNS, type Account } from "./accounts";
-import { getState, makeLogEntry, mutateState, stateConfigured } from "./state";
-import { enableContactDnd, isOkStatus, sleep } from "./hl-write";
+import { getState, stateConfigured } from "./state";
 
 const BASE = "https://services.leadconnectorhq.com";
 
@@ -168,28 +167,16 @@ export function classifyContact(a: Account, c: HLContact): ContactClass {
 /** Marcações internas do painel (state.ts) que afetam a classificação. */
 export interface ContactMarks {
   verifiedIds: Set<string>; // verificados à mão pelo Lucas (interno, sem tag)
-  dndIds: Set<string>; // todos os postos em DND pela automação (idempotência)
-  // DNDs das últimas 24h: somem do painel mesmo que a leitura do
-  // HighLevel ainda não mostre a flag. Depois vale a flag `dnd` do
-  // próprio contato; se ela for desligada à mão no HighLevel, o
-  // contato volta a aparecer (nada fica escondido para sempre).
-  dndRecentIds: Set<string>;
 }
 
-export const EMPTY_MARKS: ContactMarks = { verifiedIds: new Set(), dndIds: new Set(), dndRecentIds: new Set() };
-
-const DND_RECENT_MS = 24 * 60 * 60 * 1000;
+export const EMPTY_MARKS: ContactMarks = { verifiedIds: new Set() };
 
 export async function loadMarks(a: Account): Promise<ContactMarks> {
   if (!stateConfigured()) return EMPTY_MARKS;
   try {
     const s = await getState();
-    const records = s.dndApplied[a.slug] ?? [];
-    const now = Date.now();
     return {
       verifiedIds: new Set(s.verified[a.slug] ?? []),
-      dndIds: new Set(records.map((r) => r.id)),
-      dndRecentIds: new Set(records.filter((r) => r.at && now - new Date(r.at).getTime() < DND_RECENT_MS).map((r) => r.id)),
     };
   } catch {
     return EMPTY_MARKS;
@@ -213,16 +200,16 @@ export function isStaleUnverified(c: HLContact, now: number): boolean {
 }
 
 /**
- * Contato que SOME do painel pela automação de 7 dias (regra do Lucas,
- * 2026-11-22 15:02): classificado não verificado (com as marcações),
- * velho (>7 dias) e já em DND, seja porque a API já devolve dnd=true,
- * seja porque a automação aplicou e registrou internamente. Some de
- * lista, contador, conversa e quarentena.
+ * Contato que SOME do painel pela regra dos 7 dias (regra do Lucas,
+ * 2026-11-22, versão final das 15:25): classificado não verificado
+ * (com as marcações internas) e velho (>7 dias). A regra é 100%
+ * INTERNA do painel: nenhuma escrita no HighLevel por causa dela
+ * (nada de DND, nada de tag), só o contato escondido de lista,
+ * contador, conversa e quarentena enquanto estiver nessa condição.
  */
 export function isGoneContact(a: Account, c: HLContact, marks: ContactMarks, now: number): boolean {
   if (classifyWithMarks(a, c, marks) !== "unverified") return false;
-  if (!isStaleUnverified(c, now)) return false;
-  return c.dnd === true || marks.dndRecentIds.has(c.id);
+  return isStaleUnverified(c, now);
 }
 
 export function goneContactIds(a: Account, contacts: HLContact[], marks: ContactMarks, now: number): Set<string> {
@@ -367,7 +354,7 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     if (!t) continue;
     const age = now - t;
     const ageDays = Math.floor(age / day);
-    // Automação de 7 dias: não verificado velho já em DND some de TUDO
+    // Regra dos 7 dias (só painel): não verificado velho some de TUDO
     // (lista, contador, conversa, quarentena). Ver isGoneContact.
     if (isGoneContact(a, c, marks, now)) { goneCount++; continue; }
     // Comprador Partner US$ 1: classe separada, fora de TODAS as métricas
@@ -447,8 +434,8 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       // Regra do Lucas (2026-11-22): conversa não lida só conta se o
       // contato for lead VERIFICADO. Não verificado, fake, Partner (MF)
       // ou contato fora da janela coletada: some dos contadores.
-      // Contato "gone" (DND de 7 dias) some até dos contadores de
-      // escondidas: ele não existe mais para o painel.
+      // Contato "gone" (não verificado há 7+ dias) some até dos
+      // contadores de escondidas: ele não existe mais para o painel.
       const verifiedIds = verifiedContactIds(a, contacts, marks);
       const goneIds = goneContactIds(a, contacts, marks, now);
       const knownIds = new Set(contacts.map((c) => c.id));
@@ -489,9 +476,6 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
         }
       }
     } catch { /* idem */ }
-
-    // Automação de DND de 7 dias, no ciclo da coleta (throttle interno).
-    await maybeSweepDnd(a);
 
     return m;
   } catch {
@@ -592,8 +576,8 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
       conversations?: HLConversation[];
       total?: number;
     };
-    // Contato "gone" (DND de 7 dias) some por completo: as conversas
-    // dele nem entram na lista lida.
+    // Contato "gone" (não verificado há 7+ dias) some por completo:
+    // as conversas dele nem entram na lista lida.
     const goneIds = goneContactIds(a, contacts, marks, now);
     const list = (conv.conversations ?? []).filter((cv) => !cv.contactId || !goneIds.has(cv.contactId));
     conversationsLoaded = list.length;
@@ -835,109 +819,4 @@ export async function verifyAccountLeads(a: Account): Promise<VerifyResult> {
     else result.partner++;
   }
   return result;
-}
-
-// ------------------------------------------------- automação DND 7 dias
-// Regra do Lucas (2026-11-22 15:02): contato que ficar NÃO VERIFICADO
-// por mais de 7 dias (criado há mais de 7 dias e ainda unverified pela
-// regra de origem, com as marcações internas aplicadas) é posto em DND
-// no HighLevel (PUT dnd, escrita expressamente ordenada por ele) e
-// SOME do painel por completo (isGoneContact). Não verificados com
-// menos de 7 dias continuam visíveis para verificação manual a tempo.
-// Fakes seguem a regra própria, fora desta automação; Partner também.
-// Idempotente: quem já está em DND (flag da API ou registro interno)
-// não recebe nova chamada. Conservadora: na dúvida de classificação,
-// não aplica (a classe precisa ser exatamente "unverified").
-
-export interface DndSweepResult {
-  slug: string;
-  candidates: number; // na regra nesta leitura, ainda sem DND
-  applied: number;
-  appliedIds: string[];
-  appliedNames: string[];
-  remaining: number; // candidatos além do teto desta rodada
-}
-
-/**
- * Aplica a automação numa conta. Com `deferState`, NÃO grava o estado
- * interno: devolve os ids para o chamador gravar tudo numa escrita só
- * (é o que a rota de refresh faz, para as contas em paralelo não
- * atropelarem umas às outras no documento único). Sem ele, grava o
- * registro e o log aqui mesmo.
- */
-export async function sweepStaleDnd(a: Account, cap = 50, opts?: { deferState?: boolean }): Promise<DndSweepResult> {
-  const empty: DndSweepResult = { slug: a.slug, candidates: 0, applied: 0, appliedIds: [], appliedNames: [], remaining: 0 };
-  if (!a.locationId || !a.pitEnv) return empty;
-  const pit = process.env[a.pitEnv];
-  if (!pit) return empty;
-  const now = Date.now();
-  const marks = await loadMarks(a);
-  let contacts: HLContact[];
-  try {
-    contacts = await fetchContactsLive(a);
-  } catch {
-    return empty;
-  }
-  const candidates = contacts
-    .filter(
-      (c) =>
-        classifyWithMarks(a, c, marks) === "unverified" &&
-        isStaleUnverified(c, now) &&
-        c.dnd !== true &&
-        !marks.dndIds.has(c.id),
-    )
-    .sort((x, y) => new Date(x.dateAdded ?? 0).getTime() - new Date(y.dateAdded ?? 0).getTime());
-  const targets = candidates.slice(0, cap);
-  const appliedIds: string[] = [];
-  const appliedNames: string[] = [];
-  for (const c of targets) {
-    try {
-      const r = await enableContactDnd(pit, c.id);
-      if (isOkStatus(r.status)) {
-        appliedIds.push(c.id);
-        appliedNames.push(contactName(c));
-      }
-    } catch { /* falha individual não trava a rodada */ }
-    if (targets.length > 1) await sleep(150);
-  }
-  if (appliedIds.length > 0 && !opts?.deferState) {
-    const entry = makeLogEntry({
-      slug: a.slug,
-      account: a.name,
-      action: "dnd-automation",
-      kind: "log",
-      status: "completed",
-      title: `DND automation: ${appliedIds.length} contact${appliedIds.length === 1 ? "" : "s"} put on DND (unverified for 7+ days)`,
-      detail: appliedNames.join(", ").slice(0, 4000),
-    });
-    const at = new Date().toISOString();
-    try {
-      await mutateState((s) => {
-        const cur = new Map((s.dndApplied[a.slug] ?? []).map((r) => [r.id, r]));
-        for (const id of appliedIds) if (!cur.has(id)) cur.set(id, { id, at });
-        s.dndApplied[a.slug] = [...cur.values()];
-        s.log.push(entry);
-      });
-    } catch { /* sem o registro interno, o dnd da API já garante a idempotência */ }
-  }
-  return {
-    slug: a.slug,
-    candidates: candidates.length,
-    applied: appliedIds.length,
-    appliedIds,
-    appliedNames,
-    remaining: candidates.length - targets.length,
-  };
-}
-
-const lastSweepAt = new Map<string, number>();
-
-/** Na coleta normal, a automação roda no máximo 1x a cada 15 min por conta e instância, com teto baixo. */
-async function maybeSweepDnd(a: Account): Promise<void> {
-  const last = lastSweepAt.get(a.slug) ?? 0;
-  if (Date.now() - last < 15 * 60_000) return;
-  lastSweepAt.set(a.slug, Date.now());
-  try {
-    await sweepStaleDnd(a, 10);
-  } catch { /* automação nunca derruba o painel */ }
 }

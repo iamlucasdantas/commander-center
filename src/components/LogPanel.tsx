@@ -8,6 +8,7 @@ type LogFilter = "all" | "today" | "week" | "pending" | "completed" | "30d";
 const ACTION_LABEL: Record<string, string> = {
   "manual-verify": "Manual verification",
   "dnd-automation": "DND automation",
+  "dnd-revert": "DND reversal",
   "delete-unverified": "Deletion",
   "partner-separate": "Partner separation",
   manual: "Manual entry",
@@ -37,8 +38,10 @@ interface Props {
 
 /**
  * LOG do painel (pedido do Lucas, 2026-11-22): entradas automáticas
- * das ações do painel (verificação manual, automação DND de 7 dias,
- * exclusão de não verificados, separação Partner) + entradas manuais
+ * das ações do painel (verificação manual, exclusão de não
+ * verificados, separação Partner; as entradas "DND automation" são o
+ * histórico da automação desligada em 2026-11-22 e as "DND reversal",
+ * a reversão dela) + entradas manuais
  * dele (Log ou Tarefa, Pendente ou Concluída), tudo no armazenamento
  * interno (state.ts). Filtros: Hoje, Esta semana, Pendentes,
  * Concluídas, Últimos 30 dias e Tudo, estado do cliente, na hora.

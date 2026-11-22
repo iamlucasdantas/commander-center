@@ -1,8 +1,13 @@
 // Estado INTERNO do painel (correções do Lucas, 2026-11-22 15:02 e
-// 15:03): marcações de verificado feitas à mão, registro dos DNDs que
-// a automação de 7 dias aplicou e o LOG do painel (entradas automáticas
-// das ações + entradas manuais dele). NADA disso é a tag "lead-verified"
-// nem escrita de verificação no HighLevel: a verificação é interna.
+// 15:03): marcações de verificado feitas à mão, o LOG do painel
+// (entradas automáticas das ações + entradas manuais dele) e o
+// registro HISTÓRICO dos DNDs que uma versão intermediária da regra
+// dos 7 dias chegou a aplicar no HighLevel em 2026-11-22 (a automação
+// foi DESLIGADA na correção das 15:25 e os DNDs foram revertidos; o
+// registro fica como evidência de exatamente quem ela tinha atingido).
+// NADA disso é a tag "lead-verified" nem escrita de verificação no
+// HighLevel: a verificação é interna e a regra dos 7 dias é só de
+// leitura (esconder do painel), sem nenhuma escrita no HighLevel.
 //
 // Armazenamento: Blob store PRIVADA do próprio projeto no Vercel
 // ("commander-center-state"), num documento JSON único,
@@ -25,7 +30,7 @@ import { get, put } from "@vercel/blob";
 
 export interface DndRecord {
   id: string;
-  /** ISO de quando a automação aplicou o DND. */
+  /** ISO de quando a automação (desligada em 2026-11-22) aplicou o DND. */
   at: string;
 }
 
@@ -35,7 +40,7 @@ export interface LogEntry {
   at: string;
   slug: string;
   account: string;
-  action: "manual-verify" | "dnd-automation" | "delete-unverified" | "partner-separate" | "manual";
+  action: "manual-verify" | "dnd-automation" | "dnd-revert" | "delete-unverified" | "partner-separate" | "manual";
   kind: "log" | "task";
   status: "pending" | "completed";
   title: string;
@@ -45,7 +50,7 @@ export interface LogEntry {
 export interface PanelState {
   /** Marcações internas de verificado: slug -> ids de contato. */
   verified: Record<string, string[]>;
-  /** DNDs aplicados pela automação de 7 dias: slug -> registros. */
+  /** Histórico: DNDs que a automação de 7 dias (desligada) aplicou em 2026-11-22: slug -> registros. Não cresce mais. */
   dndApplied: Record<string, DndRecord[]>;
   /** Log do painel, do mais antigo ao mais novo (a exibição inverte). */
   log: LogEntry[];
@@ -161,7 +166,7 @@ export function makeLogEntry(partial: Omit<LogEntry, "id" | "at">): LogEntry {
 
 /**
  * Acrescenta uma ou mais entradas ao log sem nunca derrubar a ação
- * chamadora: se o armazenamento falhar, a ação (verificação, DND,
+ * chamadora: se o armazenamento falhar, a ação (verificação,
  * exclusão) já aconteceu e o erro do log não pode fingir o contrário.
  */
 export async function appendLog(entries: LogEntry | LogEntry[]): Promise<void> {

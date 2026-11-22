@@ -65,6 +65,15 @@ export async function enableContactDnd(pit: string, contactId: string): Promise<
   return hlWrite(pit, "PUT", `/contacts/${contactId}`, { dnd: true });
 }
 
+/**
+ * Desliga o DND do contato: PUT /contacts/{id} com `dnd: false`.
+ * Usado SÓ pela reversão pontual dos DNDs que a automação de 7 dias
+ * (desligada em 2026-11-22) aplicou, por ordem expressa do Lucas.
+ */
+export async function disableContactDnd(pit: string, contactId: string): Promise<HLWriteResult> {
+  return hlWrite(pit, "PUT", `/contacts/${contactId}`, { dnd: false });
+}
+
 /** Adiciona tags ao contato: POST /contacts/{id}/tags com { tags: [...] }. */
 export async function addContactTags(pit: string, contactId: string, tags: string[]): Promise<HLWriteResult> {
   return hlWrite(pit, "POST", `/contacts/${contactId}/tags`, { tags });
