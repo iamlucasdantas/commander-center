@@ -7,6 +7,8 @@ import {
 } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
+import LogPanel from "@/components/LogPanel";
+import { getState, stateConfigured } from "@/lib/state";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -177,6 +179,8 @@ export default async function Home() {
     cum += d.delta;
   }
   wfBars.push({ label: "This week", from: 0, to: leads7d, kind: "total" });
+
+  const logEntries = stateConfigured() ? (await getState(0)).log : [];
 
   const groups: Array<{ title: string; kinds: Account["kind"][] }> = [
     { title: "Company & community", kinds: ["empresa", "comunidade"] },
@@ -404,6 +408,11 @@ export default async function Home() {
           <li><span className="todo">→</span> GA4 traffic line crossed with leads</li>
           <li><span className="todo">→</span> Persisted snapshots and real per-account goals</li>
         </ul>
+      </div>
+
+      <h2>Panel log</h2>
+      <div className="card">
+        <LogPanel initialEntries={logEntries} showAccount />
       </div>
 
       {notLive.length > 0 && (

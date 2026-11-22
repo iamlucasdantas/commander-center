@@ -10,6 +10,8 @@
 // Essas séries alimentam sparklines, comparações e o "what changed" sem
 // nenhuma chamada extra por conta.
 import { FAKE_NAME_PATTERNS, type Account } from "./accounts";
+import { getState, makeLogEntry, mutateState, stateConfigured } from "./state";
+import { enableContactDnd, isOkStatus, sleep } from "./hl-write";
 
 const BASE = "https://services.leadconnectorhq.com";
 
@@ -19,7 +21,7 @@ export interface LeadItem {
   when: string;
   sourceLabel: string;
   emailOnly: boolean;
-  manuallyVerified: boolean; // tag "lead-verified" aplicada à mão pelo Lucas
+  manuallyVerified: boolean; // marcação interna de verificado (state.ts), sem escrita no HighLevel
   email: string | null;
   phone: string | null;
 }
@@ -74,6 +76,7 @@ export interface HLContact {
   dateAdded?: string;
   type?: string;
   tags?: string[];
+  dnd?: boolean;
 }
 
 interface HLConversation {
@@ -140,31 +143,82 @@ export function isPartnerBuyer(a: Account, c: HLContact): boolean {
 }
 
 // ------------------------------------------------------- classificação
-// A classificação ÚNICA de contato do painel, usada pelas listas de
-// leads, pela exclusão, pela verificação e (desde 2026-11-22) pelo
-// filtro das conversas não lidas:
+// A classificação de contato do painel, usada pelas listas de leads,
+// pela exclusão, pela verificação e (desde 2026-11-22) pelo filtro das
+// conversas não lidas:
 //   partner    -> comprador Partner US$ 1 (só Magnetic Funnels US)
-//   verified   -> verificação MANUAL do Lucas: contato com a tag
-//                 "lead-verified" no HighLevel é verificado em tudo,
-//                 por cima da regra automática de origem
 //   fake       -> nome casa com os padrões de fake (quarentena)
 //   unverified -> origem é só email avulso (ou source vazio)
 //   verified   -> origem real: form, calendar, chat, workflow etc.
+//
+// classifyContact é a regra automática, só com dados do HighLevel.
+// A verificação MANUAL do Lucas NÃO escreve nada no HighLevel (nada de
+// tag, correção dele de 2026-11-22 15:02): ela é uma marcação INTERNA
+// do painel (state.ts) que classifyWithMarks aplica por cima da regra
+// automática em tudo: listas, filtros, conversas e contadores.
 export type ContactClass = "verified" | "unverified" | "fake" | "partner";
-
-/** Tag que a verificação manual aplica no contato (rota /api/verify-contact). */
-export const LEAD_VERIFIED_TAG = "lead-verified";
-
-export function hasLeadVerifiedTag(c: HLContact): boolean {
-  return (c.tags ?? []).includes(LEAD_VERIFIED_TAG);
-}
 
 export function classifyContact(a: Account, c: HLContact): ContactClass {
   if (isPartnerBuyer(a, c)) return "partner";
-  if (hasLeadVerifiedTag(c)) return "verified";
   if (isFake(c)) return "fake";
   if (isEmailOnly(c)) return "unverified";
   return "verified";
+}
+
+/** Marcações internas do painel (state.ts) que afetam a classificação. */
+export interface ContactMarks {
+  verifiedIds: Set<string>; // verificados à mão pelo Lucas (interno, sem tag)
+  dndIds: Set<string>; // postos em DND pela automação de 7 dias
+}
+
+export const EMPTY_MARKS: ContactMarks = { verifiedIds: new Set(), dndIds: new Set() };
+
+export async function loadMarks(a: Account): Promise<ContactMarks> {
+  if (!stateConfigured()) return EMPTY_MARKS;
+  try {
+    const s = await getState();
+    return {
+      verifiedIds: new Set(s.verified[a.slug] ?? []),
+      dndIds: new Set(s.dndApplied[a.slug] ?? []),
+    };
+  } catch {
+    return EMPTY_MARKS;
+  }
+}
+
+/** Classificação completa: regra automática + marcação interna de verificado. */
+export function classifyWithMarks(a: Account, c: HLContact, marks: ContactMarks): ContactClass {
+  if (isPartnerBuyer(a, c)) return "partner";
+  if (marks.verifiedIds.has(c.id)) return "verified";
+  if (isFake(c)) return "fake";
+  if (isEmailOnly(c)) return "unverified";
+  return "verified";
+}
+
+/** Não verificado velho: origem de email avulso e criado há mais de 7 dias. */
+export function isStaleUnverified(c: HLContact, now: number): boolean {
+  const t = new Date(c.dateAdded ?? 0).getTime();
+  if (!t || now - t <= 7 * 86_400_000) return false;
+  return isEmailOnly(c);
+}
+
+/**
+ * Contato que SOME do painel pela automação de 7 dias (regra do Lucas,
+ * 2026-11-22 15:02): classificado não verificado (com as marcações),
+ * velho (>7 dias) e já em DND, seja porque a API já devolve dnd=true,
+ * seja porque a automação aplicou e registrou internamente. Some de
+ * lista, contador, conversa e quarentena.
+ */
+export function isGoneContact(a: Account, c: HLContact, marks: ContactMarks, now: number): boolean {
+  if (classifyWithMarks(a, c, marks) !== "unverified") return false;
+  if (!isStaleUnverified(c, now)) return false;
+  return c.dnd === true || marks.dndIds.has(c.id);
+}
+
+export function goneContactIds(a: Account, contacts: HLContact[], marks: ContactMarks, now: number): Set<string> {
+  const ids = new Set<string>();
+  for (const c of contacts) if (isGoneContact(a, c, marks, now)) ids.add(c.id);
+  return ids;
 }
 
 /**
@@ -174,10 +228,10 @@ export function classifyContact(a: Account, c: HLContact): ContactClass {
  * não lida só pode ser de lead verificado). Contato fora da janela de
  * 500 conta como não verificado.
  */
-function verifiedContactIds(a: Account, contacts: HLContact[]): Set<string> {
+function verifiedContactIds(a: Account, contacts: HLContact[], marks: ContactMarks): Set<string> {
   const ids = new Set<string>();
   for (const c of contacts) {
-    if (classifyContact(a, c) === "verified") ids.add(c.id);
+    if (classifyWithMarks(a, c, marks) === "verified") ids.add(c.id);
   }
   return ids;
 }
@@ -287,7 +341,7 @@ interface ContactScan {
 }
 
 /** Deriva contadores, séries e listas a partir dos contatos já buscados. */
-function scanContacts(a: Account, contacts: HLContact[], total: number, now: number): ContactScan {
+function scanContacts(a: Account, contacts: HLContact[], total: number, now: number, marks: ContactMarks = EMPTY_MARKS): ContactScan {
   const day = 86_400_000;
   const m: AccountMetrics = {
     ...emptyMetrics(a.slug), ok: true, fetchedAt: now, totalContacts: total,
@@ -302,6 +356,9 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     if (!t) continue;
     const age = now - t;
     const ageDays = Math.floor(age / day);
+    // Automação de 7 dias: não verificado velho já em DND some de TUDO
+    // (lista, contador, conversa, quarentena). Ver isGoneContact.
+    if (isGoneContact(a, c, marks, now)) continue;
     // Comprador Partner US$ 1: classe separada, fora de TODAS as métricas
     // e listas de leads desta conta (regra do Lucas, 2026-11-22).
     if (isPartnerBuyer(a, c)) {
@@ -333,16 +390,17 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
     if (ageDays >= 0 && ageDays < 30) m.leadsByDay30[29 - ageDays]++;
     if (ageDays >= 30 && ageDays < 60) m.leadsByDayPrev30[59 - ageDays]++;
     if (age < 7 * day) {
-      const tagged = hasLeadVerifiedTag(c);
+      const marked = marks.verifiedIds.has(c.id);
       const item: LeadItem = {
         id: c.id,
         name: contactName(c),
         when: new Date(t).toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Chicago" }),
         sourceLabel: c.source || (isEmailOnly(c) ? "stray email" : "no source"),
-        // Verificação manual vence a origem: quem tem a tag conta como
-        // verificado nas listas e nos filtros (regra do Lucas, 2026-11-22).
-        emailOnly: isEmailOnly(c) && !tagged,
-        manuallyVerified: tagged,
+        // Verificação manual (marcação INTERNA do painel, sem tag no
+        // HighLevel) vence a origem: conta como verificado nas listas
+        // e nos filtros (correção do Lucas, 2026-11-22 15:02).
+        emailOnly: isEmailOnly(c) && !marked,
+        manuallyVerified: marked,
         email: c.email ?? null,
         phone: c.phone ?? null,
       };
@@ -364,7 +422,8 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
     const now = Date.now();
     const day = 86_400_000;
     const { contacts, total } = await withRetry(() => fetchContacts(a, pit, now));
-    const { m } = scanContacts(a, contacts, total, now);
+    const marks = await loadMarks(a);
+    const { m } = scanContacts(a, contacts, total, now, marks);
 
     try {
       const conv = (await withRetry(() => hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit), 2)) as {
@@ -373,9 +432,13 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       // Regra do Lucas (2026-11-22): conversa não lida só conta se o
       // contato for lead VERIFICADO. Não verificado, fake, Partner (MF)
       // ou contato fora da janela coletada: some dos contadores.
-      const verifiedIds = verifiedContactIds(a, contacts);
+      // Contato "gone" (DND de 7 dias) some até dos contadores de
+      // escondidas: ele não existe mais para o painel.
+      const verifiedIds = verifiedContactIds(a, contacts, marks);
+      const goneIds = goneContactIds(a, contacts, marks, now);
       const knownIds = new Set(contacts.map((c) => c.id));
       for (const cv of conv.conversations ?? []) {
+        if (cv.contactId && goneIds.has(cv.contactId)) continue;
         if ((cv.unreadCount ?? 0) > 0) {
           if (cv.contactId && verifiedIds.has(cv.contactId)) {
             m.unreadConversations++;
@@ -411,6 +474,9 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
         }
       }
     } catch { /* idem */ }
+
+    // Automação de DND de 7 dias, no ciclo da coleta (throttle interno).
+    await maybeSweepDnd(a);
 
     return m;
   } catch {
@@ -497,7 +563,8 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
   const now = Date.now();
   const day = 86_400_000;
   const { contacts, total } = await withRetry(() => fetchContacts(a, pit, now));
-  const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scanContacts(a, contacts, total, now);
+  const marks = await loadMarks(a);
+  const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scanContacts(a, contacts, total, now, marks);
 
   let waiting: ConversationItem[] = [];
   let waitingHidden = 0;
@@ -510,13 +577,16 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
       conversations?: HLConversation[];
       total?: number;
     };
-    const list = conv.conversations ?? [];
+    // Contato "gone" (DND de 7 dias) some por completo: as conversas
+    // dele nem entram na lista lida.
+    const goneIds = goneContactIds(a, contacts, marks, now);
+    const list = (conv.conversations ?? []).filter((cv) => !cv.contactId || !goneIds.has(cv.contactId));
     conversationsLoaded = list.length;
     conversationsTotal = typeof conv.total === "number" ? conv.total : null;
     // Regra do Lucas (2026-11-22): a lista de espera só mostra conversa
     // de lead VERIFICADO. Contato não verificado, fake, Partner (MF) ou
     // fora da janela coletada fica fora da lista e dos contadores.
-    const verifiedIds = verifiedContactIds(a, contacts);
+    const verifiedIds = verifiedContactIds(a, contacts, marks);
     const knownIds = new Set(contacts.map((c) => c.id));
     for (const cv of list) {
       const un = cv.unreadCount ?? 0;
@@ -658,13 +728,13 @@ export async function fetchContactsLive(a: Account): Promise<HLContact[]> {
  * de como o resto da classificação evoluir: mesmo que um source do tipo
  * "Partner Plan - Email ..." um dia caia em isEmailOnly, ele sai daqui.
  */
-export function unverifiedWeekContacts(contacts: HLContact[], now: number): HLContact[] {
+export function unverifiedWeekContacts(contacts: HLContact[], now: number, excludeIds?: Set<string>): HLContact[] {
   const day = 86_400_000;
   return contacts.filter((c) => {
     const t = new Date(c.dateAdded ?? 0).getTime();
     if (!t || now - t >= 7 * day) return false;
     if (isPartnerPlanContact(c)) return false; // trava dura: Partner nunca é excluível
-    if (hasLeadVerifiedTag(c)) return false; // verificado à mão nunca é excluível
+    if (excludeIds?.has(c.id)) return false; // verificado à mão (marcação interna) nunca é excluível
     return !isFake(c) && isEmailOnly(c);
   });
 }
@@ -675,10 +745,11 @@ export function partnerBuyerContacts(a: Account, contacts: HLContact[]): HLConta
 }
 
 // ------------------------------------------------- verificação completa
-// Botão "Verify leads" (pedido do Lucas, 2026-11-22): sob demanda, pagina
-// por TODOS os contatos da location, sem o teto de 500 da coleta normal e
-// sem cache, e classifica cada um com a regra única do painel. Só leitura:
-// não exclui nem altera nada no HighLevel.
+// Conferência sob demanda (rota /api/verify-leads, sem botão na tela
+// desde a correção do Lucas de 2026-11-22 14:54): pagina por TODOS os
+// contatos da location, sem o teto de 500 da coleta normal e sem cache,
+// e classifica cada um com a classificação completa do painel (regra
+// automática + marcações internas). Só leitura.
 
 export interface VerifyResult {
   slug: string;
@@ -729,6 +800,7 @@ export async function verifyAccountLeads(a: Account): Promise<VerifyResult> {
   if (!pit) throw new Error("Account token is not configured");
 
   const { contacts, total } = await fetchAllContacts(a, pit);
+  const marks = await loadMarks(a);
   const result: VerifyResult = {
     slug: a.slug,
     account: a.name,
@@ -741,11 +813,106 @@ export async function verifyAccountLeads(a: Account): Promise<VerifyResult> {
     checkedAt: new Date().toISOString(),
   };
   for (const c of contacts) {
-    const cls = classifyContact(a, c);
+    const cls = classifyWithMarks(a, c, marks);
     if (cls === "verified") result.verified++;
     else if (cls === "unverified") result.unverified++;
     else if (cls === "fake") result.fakes++;
     else result.partner++;
   }
   return result;
+}
+
+// ------------------------------------------------- automação DND 7 dias
+// Regra do Lucas (2026-11-22 15:02): contato que ficar NÃO VERIFICADO
+// por mais de 7 dias (criado há mais de 7 dias e ainda unverified pela
+// regra de origem, com as marcações internas aplicadas) é posto em DND
+// no HighLevel (PUT dnd, escrita expressamente ordenada por ele) e
+// SOME do painel por completo (isGoneContact). Não verificados com
+// menos de 7 dias continuam visíveis para verificação manual a tempo.
+// Fakes seguem a regra própria, fora desta automação; Partner também.
+// Idempotente: quem já está em DND (flag da API ou registro interno)
+// não recebe nova chamada. Conservadora: na dúvida de classificação,
+// não aplica (a classe precisa ser exatamente "unverified").
+
+export interface DndSweepResult {
+  slug: string;
+  candidates: number; // na regra nesta leitura, ainda sem DND
+  applied: number;
+  appliedNames: string[];
+  remaining: number; // candidatos além do teto desta rodada
+}
+
+export async function sweepStaleDnd(a: Account, cap = 50): Promise<DndSweepResult> {
+  const empty: DndSweepResult = { slug: a.slug, candidates: 0, applied: 0, appliedNames: [], remaining: 0 };
+  if (!a.locationId || !a.pitEnv) return empty;
+  const pit = process.env[a.pitEnv];
+  if (!pit) return empty;
+  const now = Date.now();
+  const marks = await loadMarks(a);
+  let contacts: HLContact[];
+  try {
+    contacts = await fetchContactsLive(a);
+  } catch {
+    return empty;
+  }
+  const candidates = contacts
+    .filter(
+      (c) =>
+        classifyWithMarks(a, c, marks) === "unverified" &&
+        isStaleUnverified(c, now) &&
+        c.dnd !== true &&
+        !marks.dndIds.has(c.id),
+    )
+    .sort((x, y) => new Date(x.dateAdded ?? 0).getTime() - new Date(y.dateAdded ?? 0).getTime());
+  const targets = candidates.slice(0, cap);
+  const appliedIds: string[] = [];
+  const appliedNames: string[] = [];
+  for (const c of targets) {
+    try {
+      const r = await enableContactDnd(pit, c.id);
+      if (isOkStatus(r.status)) {
+        appliedIds.push(c.id);
+        appliedNames.push(contactName(c));
+      }
+    } catch { /* falha individual não trava a rodada */ }
+    if (targets.length > 1) await sleep(150);
+  }
+  if (appliedIds.length > 0) {
+    const entry = makeLogEntry({
+      slug: a.slug,
+      account: a.name,
+      action: "dnd-automation",
+      kind: "log",
+      status: "completed",
+      title: `DND automation: ${appliedIds.length} contact${appliedIds.length === 1 ? "" : "s"} put on DND (unverified for 7+ days)`,
+      detail: appliedNames.join(", ").slice(0, 4000),
+    });
+    try {
+      await mutateState((s) => {
+        const cur = new Set(s.dndApplied[a.slug] ?? []);
+        for (const id of appliedIds) cur.add(id);
+        s.dndApplied[a.slug] = [...cur];
+        s.log.push(entry);
+      });
+    } catch { /* sem o registro interno, o dnd da API já garante a idempotência */ }
+  }
+  return {
+    slug: a.slug,
+    candidates: candidates.length,
+    applied: appliedIds.length,
+    appliedNames,
+    remaining: candidates.length - targets.length,
+  };
+}
+
+const lastSweepAt = new Map<string, number>();
+
+/** Na coleta normal, a automação roda no máximo 1x a cada 15 min por conta e instância, com teto baixo. */
+async function maybeSweepDnd(a: Account): Promise<void> {
+  const last = lastSweepAt.get(a.slug) ?? 0;
+  if (Date.now() - last < 15 * 60_000) return;
+  lastSweepAt.set(a.slug, Date.now());
+  try {
+    await sweepStaleDnd(a, 10);
+  } catch { /* automação nunca derruba o painel */ }
 }

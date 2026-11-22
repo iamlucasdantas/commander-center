@@ -9,6 +9,7 @@ import {
   type HLContact,
 } from "@/lib/hl";
 import { accountPit, addContactTags, enableContactDnd, isOkStatus, isPermissionError, sleep } from "@/lib/hl-write";
+import { appendLog, makeLogEntry } from "@/lib/state";
 
 // Separação dos compradores Partner US$ 1 dentro do HighLevel (regra do
 // Lucas, 2026-11-22): eles ficam numa lista separada e fora do alcance
@@ -144,6 +145,19 @@ export async function POST(req: Request) {
   }
 
   const done = results.filter((r) => r.dnd && r.tag).length;
+  if (done > 0) {
+    await appendLog([
+      makeLogEntry({
+        slug: a.slug,
+        account: a.name,
+        action: "partner-separate",
+        kind: "log",
+        status: "completed",
+        title: `Partner separation: ${done} contact${done === 1 ? "" : "s"} separated in HighLevel (DND on, partner-usd1 tag)`,
+        detail: results.filter((r) => r.dnd && r.tag).map((r) => r.name).join(", ").slice(0, 4000),
+      }),
+    ]);
+  }
   return NextResponse.json({
     ok: true,
     mode,

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { ACCOUNTS } from "@/lib/accounts";
-import { contactRecord, fetchContactsLive, unverifiedWeekContacts, type ContactRecord, type HLContact } from "@/lib/hl";
+import { contactRecord, fetchContactsLive, loadMarks, unverifiedWeekContacts, type ContactRecord, type HLContact } from "@/lib/hl";
 import { accountPit, deleteContact, isOkStatus, isPermissionError, sleep } from "@/lib/hl-write";
+import { appendLog, makeLogEntry } from "@/lib/state";
 
 // Exclusão em massa dos leads NÃO VERIFICADOS de uma conta, direto no
 // HighLevel (decisão do Lucas, 2026-11-22). Dois modos:
@@ -57,7 +58,8 @@ export async function POST(req: Request) {
   }
 
   const now = Date.now();
-  const eligible = unverifiedWeekContacts(contacts, now);
+  const marks = await loadMarks(a);
+  const eligible = unverifiedWeekContacts(contacts, now, marks.verifiedIds);
   const record: DeleteRecord = {
     account: a.name,
     slug: a.slug,
@@ -94,6 +96,19 @@ export async function POST(req: Request) {
     }
     if (isPermissionError(status)) {
       // Sem o escopo de exclusão na chave, para tudo e diz a verdade.
+      if (deleted.length > 0) {
+        await appendLog([
+          makeLogEntry({
+            slug: a.slug,
+            account: a.name,
+            action: "delete-unverified",
+            kind: "log",
+            status: "completed",
+            title: `Deleted ${deleted.length} unverified contact${deleted.length === 1 ? "" : "s"} in HighLevel (stopped: no delete permission)`,
+            detail: `Record ${record.generatedAt} · ${deleted.map((d) => d.name).join(", ")}`.slice(0, 4000),
+          }),
+        ]);
+      }
       return NextResponse.json(
         {
           ok: false,
@@ -109,6 +124,20 @@ export async function POST(req: Request) {
     if (isOkStatus(status)) deleted.push(contactRecord(c));
     else failed.push({ id: c.id, name: contactRecord(c).name, status });
     if (DELAY_MS) await sleep(DELAY_MS);
+  }
+
+  if (deleted.length > 0) {
+    await appendLog([
+      makeLogEntry({
+        slug: a.slug,
+        account: a.name,
+        action: "delete-unverified",
+        kind: "log",
+        status: "completed",
+        title: `Deleted ${deleted.length} unverified contact${deleted.length === 1 ? "" : "s"} in HighLevel`,
+        detail: `Record ${record.generatedAt} · ${deleted.map((d) => d.name).join(", ")}`.slice(0, 4000),
+      }),
+    ]);
   }
 
   return NextResponse.json({

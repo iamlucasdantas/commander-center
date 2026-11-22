@@ -23,9 +23,9 @@ interface Props {
  *
  * Verified = entrou por formulário, calendário, chat, workflow etc.
  * (selo "lead"), OU foi verificado à mão pelo Lucas (selo "verified",
- * tag "lead-verified" no HighLevel). Unverified = email avulso, sem
- * origem rastreável (selo "unverified"). Fakes não chegam aqui: ficam
- * na quarentena.
+ * marcação INTERNA do painel, sem escrita no HighLevel). Unverified =
+ * email avulso, sem origem rastreável (selo "unverified"). Fakes não
+ * chegam aqui: ficam na quarentena.
  *
  * O filtro é estado do cliente: alterna na hora, sem recarregar e sem
  * tocar no cache de 5 minutos da coleta.
@@ -37,12 +37,14 @@ interface Props {
  * A home não passa deleteSlug, então lá nada muda.
  *
  * Verificação seletiva: com `verifySlug` (só a página da conta passa),
- * verificar um lead aplica a tag "lead-verified" no contato no
- * HighLevel (rota /api/verify-contact) e a linha vira "verified" na
- * hora; a classificação do painel inteiro passa a tratá-lo como
- * verificado. Correção do Lucas, 2026-11-22 14:54: nada de verificar
- * todos de uma vez, é selecionar ou fazer individualmente. Se a tag
- * falhar (ex.: chave sem permissão de escrita), o erro aparece na tela.
+ * verificar um lead grava a marcação INTERNA de verificado (rota
+ * /api/verify-contact, armazenamento state.ts; NADA é escrito no
+ * HighLevel) e a linha vira "verified" na hora; a classificação do
+ * painel inteiro passa a tratá-lo como verificado, e a ação entra no
+ * LOG do painel. Correções do Lucas, 2026-11-22 14:54 e 15:02: nada de
+ * verificar todos de uma vez, é selecionar ou fazer individualmente, e
+ * nada de tag. Se o armazenamento interno falhar, o erro aparece na
+ * tela em vez de fingir que verificou.
  */
 export default function LeadList({ leads, emptyText, deleteSlug, verifySlug }: Props) {
   const [filter, setFilter] = useState<LeadFilter>("all");
@@ -68,15 +70,19 @@ export default function LeadList({ leads, emptyText, deleteSlug, verifySlug }: P
     });
   }
 
-  async function verifyIds(idsToVerify: string[]) {
-    if (!verifySlug || idsToVerify.length === 0 || busy) return;
+  async function verifyIds(leadsToVerify: LeadItem[]) {
+    if (!verifySlug || leadsToVerify.length === 0 || busy) return;
+    const idsToVerify = leadsToVerify.map((l) => l.id);
     setBusy(true);
     setVerifyMsg(null);
     try {
       const res = await fetch("/api/verify-contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: verifySlug, ids: idsToVerify }),
+        body: JSON.stringify({
+          slug: verifySlug,
+          items: leadsToVerify.map((l) => ({ id: l.id, name: l.name })),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       const okIds: string[] = Array.isArray(data.results)
@@ -88,7 +94,7 @@ export default function LeadList({ leads, emptyText, deleteSlug, verifySlug }: P
       }
       const failed = typeof data.failedCount === "number" ? data.failedCount : idsToVerify.length - okIds.length;
       if (okIds.length > 0 && failed === 0) {
-        setVerifyMsg({ kind: "ok", text: `${okIds.length} lead${okIds.length === 1 ? "" : "s"} verified (tag lead-verified applied in HighLevel).` });
+        setVerifyMsg({ kind: "ok", text: `${okIds.length} lead${okIds.length === 1 ? "" : "s"} marked as verified in the panel (internal mark, nothing written in HighLevel).` });
       } else if (okIds.length > 0) {
         setVerifyMsg({ kind: "error", text: `${okIds.length} verified, ${failed} could not be verified${data.error ? `: ${data.error}` : ""}.` });
       } else {
@@ -152,7 +158,7 @@ export default function LeadList({ leads, emptyText, deleteSlug, verifySlug }: P
       {verifySlug && selected.size > 0 && (
         <div className="selbar">
           <b>{selected.size} selected</b>
-          <button type="button" className="btn primary selbtn" disabled={busy} onClick={() => verifyIds([...selected])}>
+          <button type="button" className="btn primary selbtn" disabled={busy} onClick={() => verifyIds(leads.filter((l) => selected.has(l.id)))}>
             {busy ? "Verifying..." : `Verify selected (${selected.size})`}
           </button>
           <button type="button" className="btn mini" disabled={busy} onClick={() => setSelected(new Set())}>Clear</button>
@@ -183,7 +189,7 @@ export default function LeadList({ leads, emptyText, deleteSlug, verifySlug }: P
               </span>
               <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                 {verifySlug && unv && (
-                  <button type="button" className="btn mini" disabled={busy} onClick={() => verifyIds([l.id])}>Verify</button>
+                  <button type="button" className="btn mini" disabled={busy} onClick={() => verifyIds([l])}>Verify</button>
                 )}
                 {tagged ? (
                   <span className="tag">verified</span>

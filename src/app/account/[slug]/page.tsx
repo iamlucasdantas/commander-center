@@ -5,7 +5,9 @@ import { PARTNER_ACCOUNT_SLUG, fetchAccountDetail, type AccountDetail } from "@/
 import { accountHealth, money, moneyShort } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
+import LogPanel from "@/components/LogPanel";
 import PartnerSeparate from "@/components/PartnerSeparate";
+import { getState, stateConfigured } from "@/lib/state";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +37,7 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
   const now = new Date().toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: TZ, timeZoneName: "short" });
   const m = detail?.metrics;
   const h = m ? accountHealth(m) : null;
+  const logEntries = stateConfigured() ? (await getState(0)).log : [];
 
   return (
     <div className="wrap">
@@ -223,6 +226,11 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
           </div>
         </>
       )}
+
+      <h2>Log & tasks</h2>
+      <div className="card">
+        <LogPanel initialEntries={logEntries} slug={a.slug} />
+      </div>
 
       <p className="foot">Commander Center · Magnetic Funnels. Live from HighLevel, 5-minute cache. Trends from contact and opportunity creation dates.</p>
     </div>

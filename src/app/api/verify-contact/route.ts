@@ -1,92 +1,90 @@
 import { NextResponse } from "next/server";
 import { ACCOUNTS } from "@/lib/accounts";
-import { LEAD_VERIFIED_TAG } from "@/lib/hl";
-import { accountPit, addContactTags, isOkStatus, isPermissionError, sleep } from "@/lib/hl-write";
+import { makeLogEntry, mutateState, stateConfigured } from "@/lib/state";
 
-// Verificação manual e SELETIVA de leads (correção do Lucas, 2026-11-22
-// 14:54: "Não quero verificar todos, quero poder selecionar ou fazer
-// individualmente"). A página da conta manda o slug e os ids marcados
-// (um lead ou a seleção); para cada contato, aplica a tag
-// "lead-verified" no HighLevel (POST /contacts/{id}/tags, escopo
-// contacts.write). A classificação do painel trata contato com essa
-// tag como VERIFICADO em tudo (listas, filtros, conversas não lidas,
-// contadores) e ele nunca entra no conjunto de excluíveis.
-// Falha de permissão NÃO é disfarçada: volta como erro para a tela.
+// Verificação manual e SELETIVA de leads (correções do Lucas,
+// 2026-11-22 14:54 e 15:02): ele seleciona os leads (ou verifica um por
+// vez) e a marcação é INTERNA do painel. NADA é escrito no HighLevel
+// por esta rota: nada de tag, nada de DND, nada. Os ids marcados ficam
+// no armazenamento interno (state.ts, Blob privada do projeto) e a
+// classificação do painel (classifyWithMarks) passa a tratar esses
+// contatos como VERIFICADOS em tudo: listas, filtros, conversas não
+// lidas e contadores, e eles nunca entram no conjunto de excluíveis.
+// Cada verificação gera uma entrada no LOG do painel (quem, quantos e
+// quais leads).
 export const maxDuration = 60;
 
-const DELAY_MS = 150;
-const MAX_IDS = 200;
+const MAX_ITEMS = 200;
 
-interface ItemResult {
+interface Item {
   id: string;
-  ok: boolean;
-  error?: string;
+  name: string;
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => null)) as { slug?: unknown; ids?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as
+    | { slug?: unknown; items?: unknown; ids?: unknown }
+    | null;
   const slug = typeof body?.slug === "string" ? body.slug : "";
-  const rawIds = Array.isArray(body?.ids) ? body.ids : [];
-  const ids = [...new Set(rawIds.filter((x): x is string => typeof x === "string" && x.length > 0))].slice(0, MAX_IDS);
+
+  const items: Item[] = [];
+  if (Array.isArray(body?.items)) {
+    for (const raw of body.items) {
+      const it = raw as { id?: unknown; name?: unknown };
+      if (typeof it?.id === "string" && it.id) {
+        items.push({ id: it.id, name: typeof it.name === "string" && it.name ? it.name : it.id });
+      }
+    }
+  } else if (Array.isArray(body?.ids)) {
+    for (const id of body.ids) {
+      if (typeof id === "string" && id) items.push({ id, name: id });
+    }
+  }
+  const unique = [...new Map(items.map((i) => [i.id, i])).values()].slice(0, MAX_ITEMS);
 
   const a = ACCOUNTS.find((x) => x.slug === slug);
-  if (!a || !a.locationId || !a.pitEnv) {
+  if (!a || !a.locationId) {
     return NextResponse.json({ ok: false, error: "Account has no connected HighLevel location" }, { status: 404 });
   }
-  if (ids.length === 0) {
+  if (unique.length === 0) {
     return NextResponse.json({ ok: false, error: "No leads selected" }, { status: 400 });
   }
-
-  let pit: string;
-  try {
-    pit = accountPit(a);
-  } catch {
-    return NextResponse.json({ ok: false, error: "Account token is not configured" }, { status: 400 });
-  }
-
-  const results: ItemResult[] = [];
-  let permissionDenied = false;
-  for (const id of ids) {
-    try {
-      const r = await addContactTags(pit, id, [LEAD_VERIFIED_TAG]);
-      if (isOkStatus(r.status)) {
-        results.push({ id, ok: true });
-      } else if (isPermissionError(r.status)) {
-        permissionDenied = true;
-        results.push({ id, ok: false, error: "no permission" });
-      } else {
-        results.push({ id, ok: false, error: `HighLevel answered ${r.status}` });
-      }
-    } catch {
-      results.push({ id, ok: false, error: "network error" });
-    }
-    if (ids.length > 1) await sleep(DELAY_MS);
-  }
-
-  const verifiedCount = results.filter((r) => r.ok).length;
-  const failedCount = results.length - verifiedCount;
-  if (verifiedCount === 0 && permissionDenied) {
+  if (!stateConfigured()) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "This account's key has no write permission yet, so the lead-verified tag could not be applied",
-        results,
-        verifiedCount,
-        failedCount,
-      },
-      { status: 403 },
+      { ok: false, error: "Internal storage is not configured yet, so the verification cannot be saved" },
+      { status: 503 },
+    );
+  }
+
+  try {
+    await mutateState((s) => {
+      const cur = new Set(s.verified[a.slug] ?? []);
+      for (const it of unique) cur.add(it.id);
+      s.verified[a.slug] = [...cur];
+      s.log.push(
+        makeLogEntry({
+          slug: a.slug,
+          account: a.name,
+          action: "manual-verify",
+          kind: "log",
+          status: "completed",
+          title: `Manual verification: ${unique.length} lead${unique.length === 1 ? "" : "s"} marked as verified`,
+          detail: unique.map((i) => i.name).join(", ").slice(0, 4000),
+        }),
+      );
+    });
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "The internal storage did not answer, so nothing was marked" },
+      { status: 502 },
     );
   }
 
   return NextResponse.json({
-    ok: verifiedCount > 0,
+    ok: true,
     slug: a.slug,
-    tag: LEAD_VERIFIED_TAG,
-    results,
-    verifiedCount,
-    failedCount,
-    ...(permissionDenied && failedCount > 0
-      ? { error: "Some leads could not be verified: the account key has no write permission" }
-      : {}),
+    verifiedCount: unique.length,
+    results: unique.map((i) => ({ id: i.id, ok: true })),
+    failedCount: 0,
   });
 }

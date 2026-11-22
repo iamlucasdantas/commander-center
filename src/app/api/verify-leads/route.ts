@@ -7,10 +7,11 @@ import { verifyAccountLeads } from "@/lib/hl";
 // de 500 da coleta normal, e devolve a contagem por classe
 // (verificado, não verificado, fake e, na Magnetic Funnels US,
 // Partner). Só leitura e classificação: nada é excluído nem alterado
-// no HighLevel. Desde a correção do Lucas de 2026-11-22 (14:54) NÃO há
-// botão de "verificar tudo" na interface: a verificação na tela é
-// seletiva, lead a lead, pela rota /api/verify-contact (tag
-// "lead-verified"). Esta rota fica como apoio de conferência.
+// no HighLevel. Desde as correções do Lucas de 2026-11-22 (14:54 e
+// 15:02) NÃO há botão de "verificar tudo" na interface: a verificação
+// na tela é seletiva, lead a lead, pela rota /api/verify-contact, e é
+// marcação INTERNA do painel (state.ts), sem escrita no HighLevel.
+// Esta rota fica como apoio de conferência.
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
