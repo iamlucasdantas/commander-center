@@ -6,6 +6,9 @@
 // para a variável de ambiente que o Lucas preenche no Vercel.
 // Contas sem location têm sourceStatus "mapear": a fonte dos leads
 // (subconta, pipeline ou sistema) ainda será definida com o Lucas.
+// Atualização 2026-11-22: QC Electric, QC Landscaping, Clientes nos EUA
+// e Food Truck QC ganharam location própria no HighLevel e foram ligadas
+// (tokens PIT criados e salvos no Vercel). Painel passa a 21 locations.
 
 export type AccountKind = "empresa" | "comunidade" | "cliente" | "projeto" | "potencial";
 export type SourceStatus = "hl-location" | "hl-conexao" | "propria" | "mapear" | "sem-subconta";
@@ -44,15 +47,15 @@ export const ACCOUNTS: Account[] = [
   { slug: "mi-rancho", name: "Mi Rancho", kind: "cliente", locationId: "Nz2khzjxTusPragWYSib", pitEnv: "HL_PIT_MI_RANCHO", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "HighLevel: MI RANCHO FINE MEXICAN CUISINE" },
 
   // ===== Marcas e projetos próprios =====
-  { slug: "food-truck-qc", name: "Food Truck QC", kind: "projeto", locationId: null, pitEnv: null, site: "https://app.foodtruckqc.com", sourceStatus: "propria", inNotion: true, inWorkDrive: true, note: "Source: its own app. Reserved variable: FTQC_API_KEY" },
+  { slug: "food-truck-qc", name: "Food Truck QC", kind: "projeto", locationId: "yuLWbk934QqIzhOTjyub", pitEnv: "HL_PIT_FOOD_TRUCK_QC", site: "https://app.foodtruckqc.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Collects from HighLevel like the others; the app's own data is a separate source, not in this panel yet" },
   { slug: "saazid", name: "SAAZID", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: true },
   { slug: "qc-digital", name: "Quad Cities Digital", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: true },
   { slug: "qc-aesthetics", name: "Quad Cities Aesthetics", kind: "projeto", locationId: "8XFDAaPDyWi190LwqxvT", pitEnv: "HL_PIT_QC_AESTHETICS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "qc-home-renovation", name: "Quad Cities Home Renovation", kind: "projeto", locationId: "d2Wetxz6eTgmNdMndEeN", pitEnv: "HL_PIT_QC_HOME_RENOVATION", site: "https://quadcitieshomerenovation.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "qc-house-cleaning", name: "Quad Cities House Cleaning", kind: "projeto", locationId: "l2HYV5tTmRrsMFDRhe13", pitEnv: "HL_PIT_QC_HOUSE_CLEANING", site: "https://quadcitieshousecleaning.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
-  { slug: "qc-electric", name: "Quad Cities Electric (com HVAC)", kind: "projeto", locationId: null, pitEnv: "HL_PIT_QC_ELECTRIC", site: "https://quadcitieselectrician.com", sourceStatus: "sem-subconta", inNotion: true, inWorkDrive: true },
-  { slug: "qc-landscaping", name: "Quad Cities Landscaping (com Tree Service)", kind: "projeto", locationId: null, pitEnv: "HL_PIT_QC_LANDSCAPING", site: "https://quadcitieslawncare.com", sourceStatus: "sem-subconta", inNotion: true, inWorkDrive: true },
-  { slug: "clientes-nos-eua", name: "Clientes nos EUA", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: true, note: "Voice agents program (Juscivan)" },
+  { slug: "qc-electric", name: "Quad Cities Electric (com HVAC)", kind: "projeto", locationId: "fqVlJs3KCTylR7aYLN1I", pitEnv: "HL_PIT_QC_ELECTRIC", site: "https://quadcitieselectrician.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
+  { slug: "qc-landscaping", name: "Quad Cities Landscaping (com Tree Service)", kind: "projeto", locationId: "7vzIQSOlgTHk4KKo1E6L", pitEnv: "HL_PIT_QC_LANDSCAPING", site: "https://quadcitieslawncare.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
+  { slug: "clientes-nos-eua", name: "Clientes nos EUA", kind: "projeto", locationId: "daPTfU85p2gL1ha7tyPK", pitEnv: "HL_PIT_CLIENTES_NOS_EUA", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Voice agents program (Juscivan)" },
   { slug: "wrexham-brasil", name: "Wrexham Brasil", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: false },
   { slug: "muscatine-tree-service", name: "Muscatine Tree Service", kind: "projeto", locationId: "SFuOaZw2occIPJjkI7bA", pitEnv: "HL_PIT_MUSCATINE_TREE_SERVICE", site: null, sourceStatus: "hl-location", inNotion: false, inWorkDrive: false, note: "Only exists in the current Hub, Lead Generation group" },
 
