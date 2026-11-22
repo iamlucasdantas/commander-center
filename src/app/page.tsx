@@ -348,7 +348,7 @@ export default async function Home() {
                     const vs = vsAverage(m.leads7d, avgLeads7d);
                     return (
                       <tr key={a.slug}>
-                        <td><b><Link className="acctlink" href={`/account/${a.slug}`}>{a.name}</Link></b><small className="note">{KIND_LABEL[a.kind]}{a.note ? `, ${a.note}` : ""}</small></td>
+                        <td><b><Link className="acctlink" href={`/account/${a.slug}`}>{a.name}</Link></b><small className="note">{KIND_LABEL[a.kind]}</small></td>
                         <td>
                           <div className="ringwrap" title={h.reasons.join("; ")}>
                             <Ring pct={h.score} color={HEALTH_COLOR[h.level]} center={`${h.score}`} />

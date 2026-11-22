@@ -168,18 +168,28 @@ export function classifyContact(a: Account, c: HLContact): ContactClass {
 /** Marcações internas do painel (state.ts) que afetam a classificação. */
 export interface ContactMarks {
   verifiedIds: Set<string>; // verificados à mão pelo Lucas (interno, sem tag)
-  dndIds: Set<string>; // postos em DND pela automação de 7 dias
+  dndIds: Set<string>; // todos os postos em DND pela automação (idempotência)
+  // DNDs das últimas 24h: somem do painel mesmo que a leitura do
+  // HighLevel ainda não mostre a flag. Depois vale a flag `dnd` do
+  // próprio contato; se ela for desligada à mão no HighLevel, o
+  // contato volta a aparecer (nada fica escondido para sempre).
+  dndRecentIds: Set<string>;
 }
 
-export const EMPTY_MARKS: ContactMarks = { verifiedIds: new Set(), dndIds: new Set() };
+export const EMPTY_MARKS: ContactMarks = { verifiedIds: new Set(), dndIds: new Set(), dndRecentIds: new Set() };
+
+const DND_RECENT_MS = 24 * 60 * 60 * 1000;
 
 export async function loadMarks(a: Account): Promise<ContactMarks> {
   if (!stateConfigured()) return EMPTY_MARKS;
   try {
     const s = await getState();
+    const records = s.dndApplied[a.slug] ?? [];
+    const now = Date.now();
     return {
       verifiedIds: new Set(s.verified[a.slug] ?? []),
-      dndIds: new Set(s.dndApplied[a.slug] ?? []),
+      dndIds: new Set(records.map((r) => r.id)),
+      dndRecentIds: new Set(records.filter((r) => r.at && now - new Date(r.at).getTime() < DND_RECENT_MS).map((r) => r.id)),
     };
   } catch {
     return EMPTY_MARKS;
@@ -212,7 +222,7 @@ export function isStaleUnverified(c: HLContact, now: number): boolean {
 export function isGoneContact(a: Account, c: HLContact, marks: ContactMarks, now: number): boolean {
   if (classifyWithMarks(a, c, marks) !== "unverified") return false;
   if (!isStaleUnverified(c, now)) return false;
-  return c.dnd === true || marks.dndIds.has(c.id);
+  return c.dnd === true || marks.dndRecentIds.has(c.id);
 }
 
 export function goneContactIds(a: Account, contacts: HLContact[], marks: ContactMarks, now: number): Set<string> {
@@ -838,12 +848,20 @@ export interface DndSweepResult {
   slug: string;
   candidates: number; // na regra nesta leitura, ainda sem DND
   applied: number;
+  appliedIds: string[];
   appliedNames: string[];
   remaining: number; // candidatos além do teto desta rodada
 }
 
-export async function sweepStaleDnd(a: Account, cap = 50): Promise<DndSweepResult> {
-  const empty: DndSweepResult = { slug: a.slug, candidates: 0, applied: 0, appliedNames: [], remaining: 0 };
+/**
+ * Aplica a automação numa conta. Com `deferState`, NÃO grava o estado
+ * interno: devolve os ids para o chamador gravar tudo numa escrita só
+ * (é o que a rota de refresh faz, para as contas em paralelo não
+ * atropelarem umas às outras no documento único). Sem ele, grava o
+ * registro e o log aqui mesmo.
+ */
+export async function sweepStaleDnd(a: Account, cap = 50, opts?: { deferState?: boolean }): Promise<DndSweepResult> {
+  const empty: DndSweepResult = { slug: a.slug, candidates: 0, applied: 0, appliedIds: [], appliedNames: [], remaining: 0 };
   if (!a.locationId || !a.pitEnv) return empty;
   const pit = process.env[a.pitEnv];
   if (!pit) return empty;
@@ -877,7 +895,7 @@ export async function sweepStaleDnd(a: Account, cap = 50): Promise<DndSweepResul
     } catch { /* falha individual não trava a rodada */ }
     if (targets.length > 1) await sleep(150);
   }
-  if (appliedIds.length > 0) {
+  if (appliedIds.length > 0 && !opts?.deferState) {
     const entry = makeLogEntry({
       slug: a.slug,
       account: a.name,
@@ -887,11 +905,12 @@ export async function sweepStaleDnd(a: Account, cap = 50): Promise<DndSweepResul
       title: `DND automation: ${appliedIds.length} contact${appliedIds.length === 1 ? "" : "s"} put on DND (unverified for 7+ days)`,
       detail: appliedNames.join(", ").slice(0, 4000),
     });
+    const at = new Date().toISOString();
     try {
       await mutateState((s) => {
-        const cur = new Set(s.dndApplied[a.slug] ?? []);
-        for (const id of appliedIds) cur.add(id);
-        s.dndApplied[a.slug] = [...cur];
+        const cur = new Map((s.dndApplied[a.slug] ?? []).map((r) => [r.id, r]));
+        for (const id of appliedIds) if (!cur.has(id)) cur.set(id, { id, at });
+        s.dndApplied[a.slug] = [...cur.values()];
         s.log.push(entry);
       });
     } catch { /* sem o registro interno, o dnd da API já garante a idempotência */ }
@@ -900,6 +919,7 @@ export async function sweepStaleDnd(a: Account, cap = 50): Promise<DndSweepResul
     slug: a.slug,
     candidates: candidates.length,
     applied: appliedIds.length,
+    appliedIds,
     appliedNames,
     remaining: candidates.length - targets.length,
   };

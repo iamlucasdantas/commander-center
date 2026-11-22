@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNTS } from "@/lib/accounts";
 import { sweepStaleDnd, type DndSweepResult } from "@/lib/hl";
+import { makeLogEntry, mutateState, stateConfigured } from "@/lib/state";
 
 // Refresh manual (pedido do Lucas, 2026-11-16): além da coleta automática,
 // ele pode forçar a atualização quando quiser, no painel inteiro ou por conta.
@@ -39,18 +40,44 @@ export async function POST(req: Request) {
     // Automação de DND de 7 dias (regra do Lucas, 2026-11-22): o
     // refresh é um dos gatilhos do ciclo dela. Roda por conta, em
     // paralelo, com teto de 50 aplicações por conta, e devolve o
-    // resumo de cada uma.
+    // resumo de cada uma. As varreduras NÃO gravam o estado interno
+    // (deferState): os registros de DND e as entradas de log de todas
+    // as contas são gravados numa escrita só no fim, para as contas
+    // em paralelo não atropelarem umas às outras no documento único
+    // (na primeira execução, escritas simultâneas se perderam).
+    const hlTargets = targets.filter((a) => a.sourceStatus === "hl-location");
     const dndSweep: DndSweepResult[] = await Promise.all(
-      targets
-        .filter((a) => a.sourceStatus === "hl-location")
-        .map(async (a) => {
-          try {
-            return await sweepStaleDnd(a, 50);
-          } catch {
-            return { slug: a.slug, candidates: 0, applied: 0, appliedNames: [], remaining: 0 };
-          }
-        }),
+      hlTargets.map(async (a) => {
+        try {
+          return await sweepStaleDnd(a, 50, { deferState: true });
+        } catch {
+          return { slug: a.slug, candidates: 0, applied: 0, appliedIds: [], appliedNames: [], remaining: 0 };
+        }
+      }),
     );
+    const appliedResults = dndSweep.filter((r) => r.applied > 0);
+    if (appliedResults.length > 0 && stateConfigured()) {
+      const at = new Date().toISOString();
+      const nameBySlug = new Map(hlTargets.map((a) => [a.slug, a.name]));
+      try {
+        await mutateState((s) => {
+          for (const r of appliedResults) {
+            const cur = new Map((s.dndApplied[r.slug] ?? []).map((rec) => [rec.id, rec]));
+            for (const id of r.appliedIds) if (!cur.has(id)) cur.set(id, { id, at });
+            s.dndApplied[r.slug] = [...cur.values()];
+            s.log.push(makeLogEntry({
+              slug: r.slug,
+              account: nameBySlug.get(r.slug) ?? r.slug,
+              action: "dnd-automation",
+              kind: "log",
+              status: "completed",
+              title: `DND automation: ${r.applied} contact${r.applied === 1 ? "" : "s"} put on DND (unverified for 7+ days)`,
+              detail: r.appliedNames.join(", ").slice(0, 4000),
+            }));
+          }
+        });
+      } catch { /* sem o registro interno, o dnd da API já garante a idempotência */ }
+    }
     return NextResponse.json({
       ok: true,
       startedAt: new Date(lastRunAt).toISOString(),

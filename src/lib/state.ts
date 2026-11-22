@@ -1,116 +1,174 @@
-// Armazenamento INTERNO do Commander Center (correções do Lucas,
-// 2026-11-22 15:02 e 15:03): a verificação manual de leads NÃO escreve
-// nada no HighLevel (nada de tag); ela vive só aqui, junto com o
-// registro de quem a automação de DND de 7 dias já aplicou e com o LOG
-// do painel (ações automáticas + entradas manuais do Lucas).
+// Estado INTERNO do painel (correções do Lucas, 2026-11-22 15:02 e
+// 15:03): marcações de verificado feitas à mão, registro dos DNDs que
+// a automação de 7 dias aplicou e o LOG do painel (entradas automáticas
+// das ações + entradas manuais dele). NADA disso é a tag "lead-verified"
+// nem escrita de verificação no HighLevel: a verificação é interna.
 //
-// Onde fica: um único documento JSON ("panel-state.json") numa Vercel
-// Blob store PRIVADA do próprio projeto ("commander-center-state",
-// criada em 2026-11-22 e ligada ao projeto; o token chega pela env
-// BLOB_READ_WRITE_TOKEN). É o armazenamento durável mais simples
-// disponível neste projeto: sem banco novo, sem dependência de outro
-// sistema, leitura e escrita por fetch via SDK oficial. Trade-off
-// assumido e documentado: documento único com leitura-modificação-
-// escrita; com um único operador (o Lucas) a chance de escrita
-// concorrente se perder é mínima, e nenhuma ação crítica depende só
-// deste registro (o DND é idempotente pelo próprio HighLevel).
-import { list, put } from "@vercel/blob";
+// Armazenamento: Blob store PRIVADA do próprio projeto no Vercel
+// ("commander-center-state"), num documento JSON único,
+// `panel-state.json`. É o armazenamento durável mais simples que o
+// projeto tem: nenhuma dependência nova de banco, nenhum sistema
+// externo, e o token já vem da env BLOB_READ_WRITE_TOKEN, criada
+// automaticamente ao ligar a store ao projeto. O preço é um documento
+// só, lido e regravado por inteiro a cada mudança (leitura-modificação-
+// escrita); com um operador só (o Lucas) e o volume atual, isso é
+// seguro o bastante, e a escrita confere a própria gravação e tenta de
+// novo se outra escrita simultânea a atropelar (ver mutateState).
+//
+// Leitura SEMPRE pela origem (get com useCache: false): a primeira
+// versão lia pela URL de download e caía no cache de CDN, devolvendo
+// versões velhas do documento minutos depois de uma escrita. Escrita e
+// leitura no mesmo fuso de instância passam por um cache em memória de
+// 15 segundos para não martelar a store a cada coleta.
 
-const PATHNAME = "panel-state.json";
-const LOG_CAP = 2000;
+import { get, put } from "@vercel/blob";
+
+export interface DndRecord {
+  id: string;
+  /** ISO de quando a automação aplicou o DND. */
+  at: string;
+}
 
 export interface LogEntry {
   id: string;
-  at: string; // ISO
-  slug: string | null; // conta dona da entrada (null = painel inteiro)
-  account: string; // nome de exibição da conta
-  action: string; // manual-verify | dnd-automation | delete-unverified | partner-separate | manual
-  kind: "log" | "task"; // Tipo: Log ou Tarefa (manual); automático é sempre "log"
-  status: "pending" | "completed"; // Pendente | Concluída
+  /** ISO da gravação; a exibição converte para America/Chicago. */
+  at: string;
+  slug: string;
+  account: string;
+  action: "manual-verify" | "dnd-automation" | "delete-unverified" | "partner-separate" | "manual";
+  kind: "log" | "task";
+  status: "pending" | "completed";
   title: string;
   detail?: string;
 }
 
 export interface PanelState {
-  verified: Record<string, string[]>; // slug -> ids marcados como verificados à mão (interno)
-  dndApplied: Record<string, string[]>; // slug -> ids que a automação de 7 dias pôs em DND
+  /** Marcações internas de verificado: slug -> ids de contato. */
+  verified: Record<string, string[]>;
+  /** DNDs aplicados pela automação de 7 dias: slug -> registros. */
+  dndApplied: Record<string, DndRecord[]>;
+  /** Log do painel, do mais antigo ao mais novo (a exibição inverte). */
   log: LogEntry[];
 }
 
-const EMPTY: PanelState = { verified: {}, dndApplied: {}, log: [] };
+const PANEL_STATE_PATH = "panel-state.json";
+const LOG_CAP = 2000;
 
-let memCache: { at: number; state: PanelState } | null = null;
+function emptyState(): PanelState {
+  return { verified: {}, dndApplied: {}, log: [] };
+}
 
 export function stateConfigured(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
 
-async function readRemote(): Promise<PanelState> {
-  try {
-    const { blobs } = await list({ prefix: PATHNAME, limit: 5 });
-    const b = blobs.find((x) => x.pathname === PATHNAME);
-    if (!b) return { verified: {}, dndApplied: {}, log: [] };
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    for (const url of [b.downloadUrl, b.url]) {
-      try {
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const data = (await res.json()) as Partial<PanelState>;
-          return {
-            verified: data.verified ?? {},
-            dndApplied: data.dndApplied ?? {},
-            log: data.log ?? [],
-          };
-        }
-      } catch { /* tenta a próxima URL */ }
+/** Tolera o formato antigo do registro de DND (só o id, sem data). */
+function normalizeDnd(raw: unknown): DndRecord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DndRecord[] = [];
+  for (const r of raw) {
+    if (typeof r === "string") out.push({ id: r, at: "" });
+    else if (r && typeof r === "object" && typeof (r as DndRecord).id === "string") {
+      out.push({ id: (r as DndRecord).id, at: typeof (r as DndRecord).at === "string" ? (r as DndRecord).at : "" });
     }
-    return { verified: {}, dndApplied: {}, log: [] };
+  }
+  return out;
+}
+
+function normalize(raw: unknown): PanelState {
+  const s = emptyState();
+  if (raw && typeof raw === "object") {
+    const o = raw as Partial<PanelState> & { dndApplied?: Record<string, unknown> };
+    if (o.verified && typeof o.verified === "object") {
+      for (const [k, v] of Object.entries(o.verified)) {
+        if (Array.isArray(v)) s.verified[k] = v.filter((x): x is string => typeof x === "string");
+      }
+    }
+    if (o.dndApplied && typeof o.dndApplied === "object") {
+      for (const [k, v] of Object.entries(o.dndApplied)) s.dndApplied[k] = normalizeDnd(v);
+    }
+    if (Array.isArray(o.log)) {
+      s.log = o.log.filter((e): e is LogEntry => Boolean(e) && typeof e === "object" && typeof (e as LogEntry).id === "string");
+    }
+  }
+  return s;
+}
+
+/** Leitura fresca da store, direto da origem, sem cache de CDN. */
+async function readRemote(): Promise<PanelState> {
+  if (!stateConfigured()) return emptyState();
+  try {
+    const res = await get(PANEL_STATE_PATH, { access: "private", useCache: false });
+    if (!res || res.statusCode !== 200 || !res.stream) return emptyState();
+    const text = await new Response(res.stream).text();
+    return normalize(JSON.parse(text));
   } catch {
-    return { verified: {}, dndApplied: {}, log: [] };
+    return emptyState();
   }
 }
 
-/** Estado atual, com cache curto em memória (15s) para a coleta não ler a Blob a cada conta. */
-export async function getState(maxAgeMs = 15_000): Promise<PanelState> {
-  if (!stateConfigured()) return EMPTY;
+async function writeRemote(s: PanelState, nonce: string): Promise<void> {
+  const doc = { ...s, _nonce: nonce };
+  await put(PANEL_STATE_PATH, JSON.stringify(doc), {
+    access: "private",
+    contentType: "application/json",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+  });
+}
+
+let memCache: { at: number; state: PanelState } | null = null;
+const MEM_TTL_MS = 15_000;
+
+/** Estado atual; maxAgeMs 0 força leitura fresca da store. */
+export async function getState(maxAgeMs = MEM_TTL_MS): Promise<PanelState> {
   if (memCache && Date.now() - memCache.at < maxAgeMs) return memCache.state;
   const s = await readRemote();
   memCache = { at: Date.now(), state: s };
   return s;
 }
 
-/** Lê fresco, aplica a mutação e grava. Devolve o estado novo. */
+/**
+ * Lê o documento fresco, aplica a mutação e regrava, CONFERINDO a
+ * gravação: relê a origem e, se o nonce da escrita não estiver lá
+ * (outra escrita simultânea atropelou), tenta de novo sobre o estado
+ * mais novo, até 3 vezes. É o que mantém íntegros os registros quando
+ * várias contas gravam ao mesmo tempo.
+ */
 export async function mutateState(fn: (s: PanelState) => void): Promise<PanelState> {
-  const s = await readRemote();
-  fn(s);
-  if (s.log.length > LOG_CAP) s.log = s.log.slice(s.log.length - LOG_CAP);
-  await put(PATHNAME, JSON.stringify(s), {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
-  memCache = { at: Date.now(), state: s };
-  return s;
+  let last = await readRemote();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const working = normalize(JSON.parse(JSON.stringify(last)));
+    fn(working);
+    if (working.log.length > LOG_CAP) working.log = working.log.slice(-LOG_CAP);
+    const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    await writeRemote(working, nonce);
+    const back = await readRemote();
+    memCache = { at: Date.now(), state: back };
+    if ((back as PanelState & { _nonce?: string })._nonce === nonce) return back;
+    last = back;
+  }
+  return last;
 }
 
-export function makeLogEntry(e: Omit<LogEntry, "id" | "at">): LogEntry {
+export function makeLogEntry(partial: Omit<LogEntry, "id" | "at">): LogEntry {
   return {
-    ...e,
-    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    ...partial,
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
     at: new Date().toISOString(),
   };
 }
 
-/** Acrescenta entradas ao log. Nunca derruba a ação que a chamou. */
-export async function appendLog(entries: LogEntry[]): Promise<void> {
-  if (!stateConfigured() || entries.length === 0) return;
+/**
+ * Acrescenta uma ou mais entradas ao log sem nunca derrubar a ação
+ * chamadora: se o armazenamento falhar, a ação (verificação, DND,
+ * exclusão) já aconteceu e o erro do log não pode fingir o contrário.
+ */
+export async function appendLog(entries: LogEntry | LogEntry[]): Promise<void> {
+  if (!stateConfigured()) return;
+  const list = Array.isArray(entries) ? entries : [entries];
+  if (list.length === 0) return;
   try {
-    await mutateState((s) => {
-      s.log.push(...entries);
-    });
-  } catch { /* o log é registro, não pode quebrar a ação principal */ }
+    await mutateState((s) => { s.log.push(...list); });
+  } catch { /* o log nunca derruba a ação */ }
 }

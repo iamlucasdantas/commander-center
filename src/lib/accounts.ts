@@ -26,6 +26,11 @@ export interface Account {
   sourceStatus: SourceStatus;
   inNotion: boolean;
   inWorkDrive: boolean;
+  // Rótulo curto de exibição (ex.: "HighLevel: nome da location").
+  // Nota interna de registro NÃO vai aqui: fica em comentário no
+  // código e no registro-contas.md, nunca na tela (correção do
+  // Lucas, 2026-11-22 15:18: a nota do merge do Quad Cities Digital
+  // vazou como descrição na lista da home).
   note?: string;
 }
 
@@ -33,24 +38,29 @@ export const ACCOUNTS: Account[] = [
   // ===== Empresa e comunidade =====
   { slug: "magnetic-funnels-us", name: "Magnetic Funnels (US)", kind: "empresa", locationId: "FDjzUx1WHAiy53Cftfpz", pitEnv: "HL_PIT_MAGNETIC_FUNNELS_US", site: "https://magneticfunnels.io", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "comunidade-magnetic-flows", name: "Comunidade Magnetic Flows (Brasil)", kind: "comunidade", locationId: "hZ7ygpwbjzq0ncNYlZKp", pitEnv: "HL_PIT_COMUNIDADE_MAGNETIC_FLOWS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
-  { slug: "magnetic-flows-community", name: "Quad Cities Digital", kind: "comunidade", locationId: "pt3gJXJbn6f5LGg33i4U", pitEnv: "HL_PIT_MAGNETIC_FLOWS_COMMUNITY", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Formerly Magnetic Flows Community (QC): Lucas, 2026-11-22, Quad Cities Digital IS the Magnetic Flows Community, one single account. QC content and House Cleaning SMS" },
+  // Registro interno (NÃO exibir): Quad Cities Digital É a antiga
+  // Magnetic Flows Community, uma conta só (Lucas, 2026-11-22);
+  // conteúdo QC e SMS da House Cleaning. Detalhe no registro-contas.md.
+  { slug: "magnetic-flows-community", name: "Quad Cities Digital", kind: "comunidade", locationId: "pt3gJXJbn6f5LGg33i4U", pitEnv: "HL_PIT_MAGNETIC_FLOWS_COMMUNITY", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "HighLevel: Magnetic Flows Community" },
 
   // ===== Clientes (12, após exclusões do Lucas em 2026-11-16: saíram Kingstons, Funnel AI, i9 Ponto, Smokin Willies, Dare To Be Different e Hiett Benefits) =====
   { slug: "the-bar-aesthetics", name: "The Bar Aesthetics & Wellness", kind: "cliente", locationId: "uBtKBbMsYRoMDDQbRYor", pitEnv: "HL_PIT_THE_BAR_AESTHETICS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "sumthin-different", name: "Sumthin' Different Barber & Beauty", kind: "cliente", locationId: "Tsdq63dVjuvy3u927u7h", pitEnv: "HL_PIT_SUMTHIN_DIFFERENT", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
-  { slug: "fresh-air-movement", name: "Fresh Air Movement", kind: "cliente", locationId: null, pitEnv: null, site: "https://freshairmovement.org", sourceStatus: "mapear", inNotion: true, inWorkDrive: true, note: "Active client, but NO account (Lucas, 2026-11-16): nothing connected yet" },
+  { slug: "fresh-air-movement", name: "Fresh Air Movement", kind: "cliente", locationId: null, pitEnv: null, site: "https://freshairmovement.org", sourceStatus: "mapear", inNotion: true, inWorkDrive: true, note: "Active client, no account connected yet" },
   { slug: "corazon-latino", name: "Corazon Latino", kind: "cliente", locationId: "MTRUB05D2yPJiDxEAy0g", pitEnv: "HL_PIT_CORAZON_LATINO", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "HighLevel: Corazon Latino Restaurant and Bar" },
   { slug: "pee-wees-soul-food", name: "Pee Wee's Soul Food", kind: "cliente", locationId: "1kYfkwPlIm4vTQfHQ1Qw", pitEnv: "HL_PIT_PEE_WEES", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "HighLevel: Pee Wee's Restaurant" },
   { slug: "globalaser", name: "Globalaser", kind: "cliente", locationId: "kYjKnNO1uHnNlZHJ1qob", pitEnv: "HL_PIT_GLOBALASER", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "dr-josiel-peixoto", name: "Dr. Josiel", kind: "cliente", locationId: "NputAFxpUzemwHor223D", pitEnv: "HL_PIT_DR_JOSIEL", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "blue-steel-auto-body", name: "Blue Steel Auto Body", kind: "cliente", locationId: "k1Fx1lPk6dtHTjE1mIN1", pitEnv: "HL_PIT_BLUE_STEEL", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "HighLevel: Blue Steel Auto" },
   { slug: "simpson-ltd", name: "Simpson Ltd", kind: "cliente", locationId: "e5gEDXuC2TuwKNkJflOa", pitEnv: "HL_PIT_SIMPSON_LTD", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
-  { slug: "olivo-taco", name: "Olivo Taco", kind: "cliente", locationId: null, pitEnv: null, site: null, sourceStatus: "sem-subconta", inNotion: true, inWorkDrive: true, note: "No account yet (Lucas, 2026-11-16)" },
+  { slug: "olivo-taco", name: "Olivo Taco", kind: "cliente", locationId: null, pitEnv: null, site: null, sourceStatus: "sem-subconta", inNotion: true, inWorkDrive: true, note: "No account yet" },
   { slug: "the-gypsy-highway", name: "The Gypsy Highway", kind: "cliente", locationId: "HSHFa6kWrm2YDy3c5gKl", pitEnv: "HL_PIT_GYPSY_HIGHWAY", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "mi-rancho", name: "Mi Rancho", kind: "cliente", locationId: "Nz2khzjxTusPragWYSib", pitEnv: "HL_PIT_MI_RANCHO", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "HighLevel: MI RANCHO FINE MEXICAN CUISINE" },
 
   // ===== Marcas e projetos próprios =====
-  { slug: "food-truck-qc", name: "Food Truck QC", kind: "projeto", locationId: "yuLWbk934QqIzhOTjyub", pitEnv: "HL_PIT_FOOD_TRUCK_QC", site: "https://app.foodtruckqc.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Collects from HighLevel like the others; the app's own data is a separate source, not in this panel yet" },
+  // Registro interno: coleta do HighLevel como as outras; os dados
+  // próprios do app são outra fonte, ainda fora deste painel.
+  { slug: "food-truck-qc", name: "Food Truck QC", kind: "projeto", locationId: "yuLWbk934QqIzhOTjyub", pitEnv: "HL_PIT_FOOD_TRUCK_QC", site: "https://app.foodtruckqc.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "saazid", name: "SAAZID", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: true },
   { slug: "qc-aesthetics", name: "Quad Cities Aesthetics", kind: "projeto", locationId: "8XFDAaPDyWi190LwqxvT", pitEnv: "HL_PIT_QC_AESTHETICS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "qc-home-renovation", name: "Quad Cities Home Renovation", kind: "projeto", locationId: "d2Wetxz6eTgmNdMndEeN", pitEnv: "HL_PIT_QC_HOME_RENOVATION", site: "https://quadcitieshomerenovation.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
@@ -59,7 +69,7 @@ export const ACCOUNTS: Account[] = [
   { slug: "qc-landscaping", name: "Quad Cities Landscaping (com Tree Service)", kind: "projeto", locationId: "7vzIQSOlgTHk4KKo1E6L", pitEnv: "HL_PIT_QC_LANDSCAPING", site: "https://quadcitieslawncare.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "clientes-nos-eua", name: "Clientes nos EUA", kind: "projeto", locationId: "daPTfU85p2gL1ha7tyPK", pitEnv: "HL_PIT_CLIENTES_NOS_EUA", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Voice agents program (Juscivan)" },
   { slug: "wrexham-brasil", name: "Wrexham Brasil", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: false },
-  { slug: "muscatine-tree-service", name: "Muscatine Tree Service", kind: "projeto", locationId: "SFuOaZw2occIPJjkI7bA", pitEnv: "HL_PIT_MUSCATINE_TREE_SERVICE", site: null, sourceStatus: "hl-location", inNotion: false, inWorkDrive: false, note: "Only exists in the current Hub, Lead Generation group" },
+  { slug: "muscatine-tree-service", name: "Muscatine Tree Service", kind: "projeto", locationId: "SFuOaZw2occIPJjkI7bA", pitEnv: "HL_PIT_MUSCATINE_TREE_SERVICE", site: null, sourceStatus: "hl-location", inNotion: false, inWorkDrive: false },
 
   // ===== Potenciais, fora do MVP =====
   { slug: "crystals-nails", name: "Crystal's Nails and Spa", kind: "potencial", locationId: "1QBWz8q9QYRs4kPqHmQE", pitEnv: null, site: null, sourceStatus: "hl-location", inNotion: false, inWorkDrive: false },
