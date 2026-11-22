@@ -20,7 +20,7 @@ function fmtDay(iso: string): string {
 }
 
 function signed(n: number | null): string {
-  if (n === null) return "history building";
+  if (n === null) return "—";
   return `${n > 0 ? "+" : ""}${n}`;
 }
 
@@ -51,7 +51,9 @@ function SaazidView({ yt, now }: { yt: YoutubeSnapshot | undefined; now: string 
           <div className="label">Subscribers</div>
           <div className="hero-value">{yt.subscribers?.toLocaleString("en-US") ?? "—"}</div>
           <div className="hint">
-            {signed(subs7)} in 7 days · {signed(subs30)} in 30 days
+            {subs7 === null && subs30 === null
+              ? "Daily snapshots started today; growth deltas appear as they accumulate."
+              : `${signed(subs7)} in 7 days · ${signed(subs30)} in 30 days`}
           </div>
         </div>
         <div className="hero-chart">
@@ -68,7 +70,7 @@ function SaazidView({ yt, now }: { yt: YoutubeSnapshot | undefined; now: string 
         <div className="card">
           <div className="label">Total views</div>
           <div className="value">{yt.totalViews?.toLocaleString("en-US") ?? "—"}</div>
-          <div className="hint">{signed(views30)} in 30 days</div>
+          <div className="hint">{views30 === null ? "deltas accumulate daily" : `${signed(views30)} in 30 days`}</div>
         </div>
         <div className="card">
           <div className="label">Videos published</div>
