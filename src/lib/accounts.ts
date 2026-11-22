@@ -9,6 +9,9 @@
 // Atualização 2026-11-22: QC Electric, QC Landscaping, Clientes nos EUA
 // e Food Truck QC ganharam location própria no HighLevel e foram ligadas
 // (tokens PIT criados e salvos no Vercel). Painel passa a 21 locations.
+// Atualização 2026-11-22 (2): Quad Cities Digital É a Magnetic Flows
+// Community (Lucas). Entrada única, exibida como "Quad Cities Digital",
+// slug e location mantidos; a entrada separada "qc-digital" saiu.
 
 export type AccountKind = "empresa" | "comunidade" | "cliente" | "projeto" | "potencial";
 export type SourceStatus = "hl-location" | "hl-conexao" | "propria" | "mapear" | "sem-subconta";
@@ -30,7 +33,7 @@ export const ACCOUNTS: Account[] = [
   // ===== Empresa e comunidade =====
   { slug: "magnetic-funnels-us", name: "Magnetic Funnels (US)", kind: "empresa", locationId: "FDjzUx1WHAiy53Cftfpz", pitEnv: "HL_PIT_MAGNETIC_FUNNELS_US", site: "https://magneticfunnels.io", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "comunidade-magnetic-flows", name: "Comunidade Magnetic Flows (Brasil)", kind: "comunidade", locationId: "hZ7ygpwbjzq0ncNYlZKp", pitEnv: "HL_PIT_COMUNIDADE_MAGNETIC_FLOWS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
-  { slug: "magnetic-flows-community", name: "Magnetic Flows Community (QC)", kind: "comunidade", locationId: "pt3gJXJbn6f5LGg33i4U", pitEnv: "HL_PIT_MAGNETIC_FLOWS_COMMUNITY", site: null, sourceStatus: "hl-location", inNotion: false, inWorkDrive: false, note: "QC content and House Cleaning SMS" },
+  { slug: "magnetic-flows-community", name: "Quad Cities Digital", kind: "comunidade", locationId: "pt3gJXJbn6f5LGg33i4U", pitEnv: "HL_PIT_MAGNETIC_FLOWS_COMMUNITY", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Formerly Magnetic Flows Community (QC): Lucas, 2026-11-22, Quad Cities Digital IS the Magnetic Flows Community, one single account. QC content and House Cleaning SMS" },
 
   // ===== Clientes (12, após exclusões do Lucas em 2026-11-16: saíram Kingstons, Funnel AI, i9 Ponto, Smokin Willies, Dare To Be Different e Hiett Benefits) =====
   { slug: "the-bar-aesthetics", name: "The Bar Aesthetics & Wellness", kind: "cliente", locationId: "uBtKBbMsYRoMDDQbRYor", pitEnv: "HL_PIT_THE_BAR_AESTHETICS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
@@ -49,7 +52,6 @@ export const ACCOUNTS: Account[] = [
   // ===== Marcas e projetos próprios =====
   { slug: "food-truck-qc", name: "Food Truck QC", kind: "projeto", locationId: "yuLWbk934QqIzhOTjyub", pitEnv: "HL_PIT_FOOD_TRUCK_QC", site: "https://app.foodtruckqc.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Collects from HighLevel like the others; the app's own data is a separate source, not in this panel yet" },
   { slug: "saazid", name: "SAAZID", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: true },
-  { slug: "qc-digital", name: "Quad Cities Digital", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: true },
   { slug: "qc-aesthetics", name: "Quad Cities Aesthetics", kind: "projeto", locationId: "8XFDAaPDyWi190LwqxvT", pitEnv: "HL_PIT_QC_AESTHETICS", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "qc-home-renovation", name: "Quad Cities Home Renovation", kind: "projeto", locationId: "d2Wetxz6eTgmNdMndEeN", pitEnv: "HL_PIT_QC_HOME_RENOVATION", site: "https://quadcitieshomerenovation.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "qc-house-cleaning", name: "Quad Cities House Cleaning", kind: "projeto", locationId: "l2HYV5tTmRrsMFDRhe13", pitEnv: "HL_PIT_QC_HOUSE_CLEANING", site: "https://quadcitieshousecleaning.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },

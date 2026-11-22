@@ -67,6 +67,10 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
         </div>
       ) : (
         <>
+          <div className="verifybar">
+            <VerifyLeads slug={a.slug} showPartner={a.slug === PARTNER_ACCOUNT_SLUG} />
+          </div>
+
           <div className="card healthstrip">
             <Ring pct={h.score} color={HEALTH_COLOR[h.level]} center={`${h.score}`} size={64} />
             <div>
@@ -136,10 +140,6 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
               <PartnerSeparate slug={a.slug} hidden={detail.partnerTotal} separated={detail.partnerSeparated} />
             </div>
           )}
-
-          <div className="card verifycard">
-            <VerifyLeads slug={a.slug} showPartner={a.slug === PARTNER_ACCOUNT_SLUG} />
-          </div>
 
           <h2>New leads this week · {detail.weekLeads.length}</h2>
           <div className="card">

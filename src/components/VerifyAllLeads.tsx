@@ -71,11 +71,11 @@ export default function VerifyAllLeads({ accounts }: { accounts: AccountRef[] })
     <div>
       <div className="actionrow" style={{ marginTop: 0 }}>
         {phase !== "running" ? (
-          <button type="button" className="btn" onClick={run}>
+          <button type="button" className="btn primary" onClick={run}>
             {phase === "done" ? "Verify all leads again" : "Verify all leads"}
           </button>
         ) : (
-          <button type="button" className="btn" disabled>Verifying...</button>
+          <button type="button" className="btn primary" disabled>Verifying...</button>
         )}
         <span className="hint">Full scan of every connected account, one at a time. Read-only, nothing changes in HighLevel.</span>
       </div>

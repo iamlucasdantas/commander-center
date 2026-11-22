@@ -75,25 +75,25 @@ export default function VerifyLeads({ slug, showPartner }: { slug: string; showP
 
   return (
     <>
-      <span className="verifyline">Lead check: full scan of every contact in this location, classified verified, unverified or fake.</span>
       {phase === "idle" && (
-        <button type="button" className="btn mini" onClick={run}>Verify leads</button>
+        <button type="button" className="btn primary" onClick={run}>Verify leads</button>
       )}
       {phase === "running" && (
-        <button type="button" className="btn mini" disabled>Verifying all contacts...</button>
+        <button type="button" className="btn primary" disabled>Verifying all contacts...</button>
       )}
       {phase === "done" && result && (
         <>
           <VerifySummary r={result} showPartner={showPartner} />
-          <button type="button" className="btn mini" onClick={run}>Verify again</button>
+          <button type="button" className="btn primary" onClick={run}>Verify again</button>
         </>
       )}
       {phase === "error" && (
         <span>
           <span className="resultbad">{error}</span>{" "}
-          <button type="button" className="btn mini" onClick={run}>Try again</button>
+          <button type="button" className="btn primary" onClick={run}>Try again</button>
         </span>
       )}
+      <span className="verifyline">Lead check: full scan of every contact in this location, classified verified, unverified or fake.</span>
     </>
   );
 }

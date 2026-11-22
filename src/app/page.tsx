@@ -198,6 +198,10 @@ export default async function Home() {
       </header>
       <p className="sub">Updated {now} · {okMetrics.length} of {conectaveis.length} locations live · clean leads only, fakes excluded</p>
 
+      <div className="verifybar">
+        <VerifyAllLeads accounts={ligadas.map((a) => ({ slug: a.slug, name: a.name }))} />
+      </div>
+
       <div className="hero">
         <div className="hero-main">
           <div className="label">Portfolio leads · last 7 days</div>
@@ -394,11 +398,6 @@ export default async function Home() {
             <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>No fakes detected in the last 30 days.</p>
           )}
         </div>
-      </div>
-
-      <h2>Verify leads</h2>
-      <div className="card">
-        <VerifyAllLeads accounts={ligadas.map((a) => ({ slug: a.slug, name: a.name }))} />
       </div>
 
       <h2>Roadmap</h2>
