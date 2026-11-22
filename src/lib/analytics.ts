@@ -170,7 +170,15 @@ export async function ingestAnalytics(payload: Partial<AnalyticsState>): Promise
     const working = normalize(JSON.parse(JSON.stringify(last)));
     if (payload.sites) {
       for (const [k, v] of Object.entries(payload.sites)) {
-        if (v) working.sites[k] = v;
+        if (!v) continue;
+        // Fusão por sub-bloco: uma coleta parcial (só GA4 ou só GSC)
+        // não pode apagar o bloco que ela não coletou.
+        const prev = working.sites[k];
+        working.sites[k] = {
+          collectedAt: v.collectedAt,
+          ga4: v.ga4 ?? prev?.ga4,
+          gsc: v.gsc ?? prev?.gsc,
+        };
       }
     }
     if (payload.social) working.social = payload.social;
