@@ -205,6 +205,28 @@ async function hlGet(path: string, pit: string): Promise<unknown> {
   return hlFetch(path, pit, false);
 }
 
+/**
+ * Repete uma leitura que falhou por erro transitório de rede (socket
+ * fechado, timeout, 5xx do HighLevel). Sem isto, UMA página lenta na
+ * coleta paralela da home derrubava a conta inteira para a seção
+ * "Not connected yet" naquela renderização, mesmo com a conta
+ * coletando normalmente (foi o que o Lucas viu com a Simpson Ltd em
+ * 2026-11-22). Páginas já lidas voltam do cache de 5 minutos, então a
+ * nova tentativa é barata.
+ */
+async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 function emptyMetrics(slug: string): AccountMetrics {
   return {
     slug, ok: false, fetchedAt: 0, leadsToday: 0, leadsYesterday: 0,
@@ -325,11 +347,11 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
   try {
     const now = Date.now();
     const day = 86_400_000;
-    const { contacts, total } = await fetchContacts(a, pit, now);
+    const { contacts, total } = await withRetry(() => fetchContacts(a, pit, now));
     const { m } = scanContacts(a, contacts, total, now);
 
     try {
-      const conv = (await hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit)) as {
+      const conv = (await withRetry(() => hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit), 2)) as {
         conversations?: HLConversation[];
       };
       // Regra do Lucas (2026-11-22): conversa não lida só conta se o
@@ -353,7 +375,7 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
     } catch { /* conversas são bônus, não derrubam a conta */ }
 
     try {
-      const opp = (await hlGet(`/opportunities/search?location_id=${a.locationId}&limit=100`, pit)) as {
+      const opp = (await withRetry(() => hlGet(`/opportunities/search?location_id=${a.locationId}&limit=100`, pit), 2)) as {
         opportunities?: HLOpportunity[];
       };
       for (const o of opp.opportunities ?? []) {
@@ -458,7 +480,7 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
 
   const now = Date.now();
   const day = 86_400_000;
-  const { contacts, total } = await fetchContacts(a, pit, now);
+  const { contacts, total } = await withRetry(() => fetchContacts(a, pit, now));
   const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scanContacts(a, contacts, total, now);
 
   let waiting: ConversationItem[] = [];
@@ -468,7 +490,7 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
   let conversationsTotal: number | null = null;
   let upToDate = 0;
   try {
-    const conv = (await hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit)) as {
+    const conv = (await withRetry(() => hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit), 2)) as {
       conversations?: HLConversation[];
       total?: number;
     };
@@ -512,7 +534,7 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
 
   let opportunities: OpportunityItem[] = [];
   try {
-    const opp = (await hlGet(`/opportunities/search?location_id=${a.locationId}&limit=100`, pit)) as {
+    const opp = (await withRetry(() => hlGet(`/opportunities/search?location_id=${a.locationId}&limit=100`, pit), 2)) as {
       opportunities?: HLOpportunity[];
     };
     const open = (opp.opportunities ?? []).filter((o) => (o.status ?? "open") === "open");
@@ -663,7 +685,10 @@ async function fetchAllContacts(a: Account, pit: string): Promise<{ contacts: HL
     const pages = Array.from({ length: BATCH }, (_, i) => start + i).filter((p) => p <= MAX_PAGE);
     const results = await Promise.all(
       pages.map(async (page) => {
-        return (await hlFetch(`/contacts/?locationId=${a.locationId}&limit=100&page=${page}`, pit, true)) as {
+        return (await withRetry(
+          () => hlFetch(`/contacts/?locationId=${a.locationId}&limit=100&page=${page}`, pit, true),
+          2,
+        )) as {
           contacts?: HLContact[];
           meta?: { total?: number; nextPage?: number | null };
         };

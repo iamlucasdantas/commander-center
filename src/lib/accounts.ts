@@ -90,7 +90,11 @@ export function hasToken(a: Account): boolean {
 /** Short reason shown for accounts with no live data (home "Not connected yet" + account page status). */
 export function notConnectedReason(a: Account): string {
   if (a.sourceStatus === "hl-location") {
-    return hasToken(a) ? "Connected, but no data yet" : "Waiting for token";
+    // Com token configurado, a conta ESTÁ conectada: se ela aparece aqui,
+    // é porque a última coleta falhou (rede/HighLevel), não porque não
+    // haja dados. "No data yet" aqui já enganou o Lucas (Simpson Ltd,
+    // 2026-11-22), que coletava normalmente.
+    return hasToken(a) ? "Connected, last collection failed" : "Waiting for token";
   }
   if (a.sourceStatus === "sem-subconta") return "No HighLevel account yet";
   if (a.sourceStatus === "propria") return "Own data source, not connected yet";
