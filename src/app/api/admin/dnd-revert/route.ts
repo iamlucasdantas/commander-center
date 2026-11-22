@@ -1,21 +1,27 @@
 import { NextResponse } from "next/server";
 import { ACCOUNTS, type Account } from "@/lib/accounts";
-import { classifyContact, fetchContactsLive, isStaleUnverified, type HLContact } from "@/lib/hl";
+import { classifyWithMarks, isStaleUnverified, loadMarks, type HLContact } from "@/lib/hl";
 import { appendLog, getState, makeLogEntry, stateConfigured } from "@/lib/state";
 import { accountPit, disableContactDnd, isOkStatus, sleep } from "@/lib/hl-write";
 
 // Rota administrativa TEMPORÁRIA (2026-11-22, remover ao fim do uso):
 // levantamento e REVERSÃO dos DNDs que a automação de 7 dias aplicou no
 // HighLevel antes de ser desligada (correções do Lucas das 15:25 e
-// 15:26). A fonte de verdade de QUEM a automação atingiu é o registro
-// interno (state.dndApplied) cruzado com o log do painel: só ids que
-// estão nesse registro são revertidos. Quem já estava em DND antes da
-// automação NÃO está no registro e não é tocado.
+// 15:26). O registro interno (state.dndApplied) perdeu escritas na
+// primeira rodada (corridas paralelas), então a identificação de quem
+// a automação atingiu cruza TRÊS sinais: estar no registro interno, OU
+// estar em DND agora com a forma exata da varredura (não verificado +
+// velho) e ter sido atualizado dentro da janela de atividade da
+// automação (o PUT dela é a última atualização do contato). Quem já
+// estava em DND antes da automação tem atualização fora da janela e
+// NÃO é tocado.
 //
-// POST { mode: "report" }          -> contagens por conta (registro + log)
-// POST { mode: "revert", slug }    -> tira o DND (PUT dnd:false) dos ids
-//                                     registrados daquela conta, um por
-//                                     um, e grava a reversão no log.
+// POST { mode: "report" }            -> contagens por conta (registro + log)
+// POST { mode: "diagnose", slug }    -> baldes de evidência de uma conta
+// POST { mode: "identify", slug }    -> quantas vítimas, sem escrever nada
+// POST { mode: "revert", slug }      -> tira o DND (PUT dnd:false) das
+//                                       vítimas daquela conta, um por
+//                                       um, e grava a reversão no log.
 export const maxDuration = 300;
 
 const BASE = "https://services.leadconnectorhq.com";
@@ -140,7 +146,8 @@ export async function POST(req: Request) {
       ? new Date(ats[0]).getTime() - 30 * 60_000
       : new Date("2026-11-22T00:00:00Z").getTime();
     const dndTrue = all.filter((c) => c.dnd === true);
-    const isVictimShape = (c: RawContact) => classifyContact(a, c) === "unverified" && isStaleUnverified(c, now);
+    const marks0 = await loadMarks(a);
+    const isVictimShape = (c: RawContact) => classifyWithMarks(a, c, marks0) === "unverified" && isStaleUnverified(c, now);
     let inRegistry = 0;
     let bNameAndWindow = 0;
     let cWindowOnly = 0;
@@ -190,14 +197,10 @@ export async function POST(req: Request) {
     });
   }
 
-  if (mode === "revert") {
+  if (mode === "identify" || mode === "revert") {
     const a: Account | undefined = ACCOUNTS.find((x) => x.slug === body.slug);
     if (!a || a.sourceStatus !== "hl-location") {
       return NextResponse.json({ ok: false, error: "Unknown or unconnected account slug" }, { status: 400 });
-    }
-    const records = state.dndApplied[a.slug] ?? [];
-    if (records.length === 0) {
-      return NextResponse.json({ ok: true, mode, slug: a.slug, registered: 0, reverted: 0, failed: [], sample: [] });
     }
     let pit: string;
     try {
@@ -205,24 +208,56 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json({ ok: false, error: "Account token is not configured" }, { status: 500 });
     }
-    let byId = new Map<string, HLContact>();
-    try {
-      const contacts = await fetchContactsLive(a);
-      byId = new Map(contacts.map((c) => [c.id, c]));
-    } catch { /* sem nomes, a reversão segue pelos ids */ }
+    const records = state.dndApplied[a.slug] ?? [];
+    const regIds = new Set(records.map((r) => r.id));
+    // Janela de atividade da automação: da primeira entrada de log
+    // "dnd-automation" (menos 10 min de margem) até o deploy que a
+    // desligou (2026-11-22T21:32Z). Fora dessa janela, DND é anterior
+    // à automação e NÃO é tocado.
+    const autoAts = state.log.filter((e) => e.action === "dnd-automation").map((e) => new Date(e.at).getTime()).filter((t) => t > 0);
+    const windowStart = (autoAts.length ? Math.min(...autoAts) : new Date("2026-11-22T00:00:00Z").getTime()) - 10 * 60_000;
+    const windowEnd = new Date("2026-11-22T21:32:00Z").getTime();
+    const marks = await loadMarks(a);
+    const now = Date.now();
+    const all = await fetchAllRaw(a, pit);
+    // Vítima da automação: está em DND agora, tem a forma exata que a
+    // varredura mirava (não verificado pela regra completa + velho) e
+    // OU está no registro interno OU foi atualizado dentro da janela
+    // de atividade da automação (o PUT dela é a última atualização).
+    const victims = all.filter((c) => {
+      if (c.dnd !== true) return false;
+      if (classifyWithMarks(a, c, marks) !== "unverified" || !isStaleUnverified(c, now)) return false;
+      if (regIds.has(c.id)) return true;
+      const upd = c.dateUpdated ? new Date(c.dateUpdated).getTime() : 0;
+      return upd >= windowStart && upd <= windowEnd;
+    });
+    const fromRegistry = victims.filter((c) => regIds.has(c.id)).length;
+    const identified = {
+      slug: a.slug,
+      name: a.name,
+      registered: records.length,
+      identifiedVictims: victims.length,
+      fromRegistry,
+      fromWindow: victims.length - fromRegistry,
+      windowStart: new Date(windowStart).toISOString(),
+      windowEnd: new Date(windowEnd).toISOString(),
+    };
+    if (mode === "identify") {
+      return NextResponse.json({ ok: true, mode, ...identified });
+    }
 
     const reverted: { id: string; name: string }[] = [];
     const failed: { id: string; name: string; status: number }[] = [];
-    for (const rec of records) {
-      const name = displayName(byId.get(rec.id), rec.id);
+    for (const c of victims) {
+      const name = displayName(c, c.id);
       try {
-        const r = await disableContactDnd(pit, rec.id);
-        if (isOkStatus(r.status)) reverted.push({ id: rec.id, name });
-        else failed.push({ id: rec.id, name, status: r.status });
+        const r = await disableContactDnd(pit, c.id);
+        if (isOkStatus(r.status)) reverted.push({ id: c.id, name });
+        else failed.push({ id: c.id, name, status: r.status });
       } catch {
-        failed.push({ id: rec.id, name, status: 0 });
+        failed.push({ id: c.id, name, status: 0 });
       }
-      if (records.length > 1) await sleep(150);
+      if (victims.length > 1) await sleep(150);
     }
 
     // Amostra: confere no HighLevel até 3 dos revertidos com dnd desligado.
@@ -249,9 +284,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       mode,
-      slug: a.slug,
-      name: a.name,
-      registered: records.length,
+      ...identified,
       reverted: reverted.length,
       failed,
       sample,
