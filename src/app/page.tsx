@@ -7,6 +7,7 @@ import {
 } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
+import VerifyAllLeads from "@/components/VerifyAllLeads";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -393,6 +394,11 @@ export default async function Home() {
             <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>No fakes detected in the last 30 days.</p>
           )}
         </div>
+      </div>
+
+      <h2>Verify leads</h2>
+      <div className="card">
+        <VerifyAllLeads accounts={ligadas.map((a) => ({ slug: a.slug, name: a.name }))} />
       </div>
 
       <h2>Roadmap</h2>

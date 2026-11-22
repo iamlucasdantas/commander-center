@@ -162,6 +162,10 @@ a.rank-row:hover { background: #1D1713; }
 .partnercard { margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .partnerline { font-size: 13.5px; color: #CBBBAE; }
 .partnerline b { color: #FCE3D4; }
+.verifycard { margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.verifyline { font-size: 13.5px; color: #CBBBAE; }
+.verifyline b { color: #FCE3D4; }
+.verifyline b.vok { color: #7CE3A8; }
 
 /* Rodapé e roadmap */
 .steps { font-size: 13.5px; line-height: 2; color: #CBBBAE; list-style: none; }

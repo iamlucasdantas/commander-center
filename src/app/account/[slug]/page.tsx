@@ -6,6 +6,7 @@ import { accountHealth, money, moneyShort } from "@/lib/insights";
 import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
 import PartnerSeparate from "@/components/PartnerSeparate";
+import VerifyLeads from "@/components/VerifyLeads";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -136,6 +137,10 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
             </div>
           )}
 
+          <div className="card verifycard">
+            <VerifyLeads slug={a.slug} showPartner={a.slug === PARTNER_ACCOUNT_SLUG} />
+          </div>
+
           <h2>New leads this week · {detail.weekLeads.length}</h2>
           <div className="card">
             <LeadList leads={detail.weekLeads} deleteSlug={a.slug} emptyText="No new leads in the last 7 days." />
@@ -160,6 +165,11 @@ export default async function AccountPage({ params }: { params: Promise<{ slug: 
                 ))
               ) : (
                 <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>Nobody waiting. Every conversation is answered.</p>
+              )}
+              {detail.waitingHidden > 0 && (
+                <p className="hint" style={{ marginTop: 8 }}>
+                  {detail.waitingHidden} waiting conversation{detail.waitingHidden === 1 ? "" : "s"} hidden · this list only shows verified leads.
+                </p>
               )}
             </div>
             <div className="card">

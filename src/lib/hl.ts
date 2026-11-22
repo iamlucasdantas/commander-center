@@ -43,6 +43,8 @@ export interface AccountMetrics {
   unread: number;
   unreadConversations: number;
   unreadHot7d: number; // conversas não lidas com atividade nos últimos 7 dias
+  unreadHidden: number; // conversas esperando escondidas pela regra "só lead verificado"
+  unreadHiddenUnknown: number; // dessas, quantas o contato nem está na janela coletada
   opportunitiesOpen: number;
   opportunitiesValue: number;
   oppStaleCount: number; // abertas sem movimento há 14+ dias
@@ -136,6 +138,38 @@ export function isPartnerBuyer(a: Account, c: HLContact): boolean {
   return isPartnerPlanContact(c);
 }
 
+// ------------------------------------------------------- classificação
+// A classificação ÚNICA de contato do painel, usada pelas listas de
+// leads, pela exclusão, pela verificação e (desde 2026-11-22) pelo
+// filtro das conversas não lidas:
+//   partner    -> comprador Partner US$ 1 (só Magnetic Funnels US)
+//   fake       -> nome casa com os padrões de fake (quarentena)
+//   unverified -> origem é só email avulso (ou source vazio)
+//   verified   -> origem real: form, calendar, chat, workflow etc.
+export type ContactClass = "verified" | "unverified" | "fake" | "partner";
+
+export function classifyContact(a: Account, c: HLContact): ContactClass {
+  if (isPartnerBuyer(a, c)) return "partner";
+  if (isFake(c)) return "fake";
+  if (isEmailOnly(c)) return "unverified";
+  return "verified";
+}
+
+/**
+ * Conjunto de ids de contatos VERIFICADOS dentro da janela coletada.
+ * Conversa cujo contato não está neste conjunto não entra em nenhuma
+ * lista nem contador de não lidas (regra do Lucas, 2026-11-22: conversa
+ * não lida só pode ser de lead verificado). Contato fora da janela de
+ * 500 conta como não verificado.
+ */
+function verifiedContactIds(a: Account, contacts: HLContact[]): Set<string> {
+  const ids = new Set<string>();
+  for (const c of contacts) {
+    if (classifyContact(a, c) === "verified") ids.add(c.id);
+  }
+  return ids;
+}
+
 /** Balde de origem para o donut de composição (30d). */
 function sourceBucket(c: HLContact): string {
   const s = (c.source ?? "").toLowerCase();
@@ -176,6 +210,7 @@ function emptyMetrics(slug: string): AccountMetrics {
     slug, ok: false, fetchedAt: 0, leadsToday: 0, leadsYesterday: 0,
     leads7d: 0, leadsPrev7d: 0, leads30d: 0, leadsPrev30d: 0,
     totalContacts: 0, unread: 0, unreadConversations: 0, unreadHot7d: 0,
+    unreadHidden: 0, unreadHiddenUnknown: 0,
     opportunitiesOpen: 0, opportunitiesValue: 0,
     oppStaleCount: 0, oppStaleValue: 0, oppNew7d: 0, oppNew7dValue: 0,
     recentLeads: [], fakes: [], fakeCount30d: 0, partnerHidden: 0, sourceCounts: {},
@@ -297,12 +332,22 @@ export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
       const conv = (await hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit)) as {
         conversations?: HLConversation[];
       };
+      // Regra do Lucas (2026-11-22): conversa não lida só conta se o
+      // contato for lead VERIFICADO. Não verificado, fake, Partner (MF)
+      // ou contato fora da janela coletada: some dos contadores.
+      const verifiedIds = verifiedContactIds(a, contacts);
+      const knownIds = new Set(contacts.map((c) => c.id));
       for (const cv of conv.conversations ?? []) {
         if ((cv.unreadCount ?? 0) > 0) {
-          m.unreadConversations++;
-          m.unread += cv.unreadCount ?? 0;
-          const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
-          if (last && now - last < 7 * day) m.unreadHot7d++;
+          if (cv.contactId && verifiedIds.has(cv.contactId)) {
+            m.unreadConversations++;
+            m.unread += cv.unreadCount ?? 0;
+            const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
+            if (last && now - last < 7 * day) m.unreadHot7d++;
+          } else {
+            m.unreadHidden++;
+            if (!cv.contactId || !knownIds.has(cv.contactId)) m.unreadHiddenUnknown++;
+          }
         }
       }
     } catch { /* conversas são bônus, não derrubam a conta */ }
@@ -358,7 +403,9 @@ export interface AccountDetail {
   metrics: AccountMetrics;
   weekLeads: LeadItem[]; // lista completa dos leads limpos dos últimos 7 dias
   fakesAll: FakeItem[]; // quarentena da conta (30d, até 30)
-  waiting: ConversationItem[]; // conversas sem resposta (unreadCount > 0)
+  waiting: ConversationItem[]; // conversas sem resposta de leads VERIFICADOS (unreadCount > 0)
+  waitingHidden: number; // conversas esperando escondidas: contato não verificado, fake, Partner ou fora da janela
+  waitingHiddenUnknown: number; // dessas, quantas o contato nem está na janela coletada
   conversationsLoaded: number; // conversas lidas (limite da busca: 100)
   conversationsTotal: number | null; // total na location, quando a API informa
   upToDate: number; // conversas lidas sem nada pendente
@@ -415,6 +462,8 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
   const { m, weekLeads, fakesAll, partnerTotal, partnerSeparated } = scanContacts(a, contacts, total, now);
 
   let waiting: ConversationItem[] = [];
+  let waitingHidden = 0;
+  let waitingHiddenUnknown = 0;
   let conversationsLoaded = 0;
   let conversationsTotal: number | null = null;
   let upToDate = 0;
@@ -426,20 +475,34 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
     const list = conv.conversations ?? [];
     conversationsLoaded = list.length;
     conversationsTotal = typeof conv.total === "number" ? conv.total : null;
+    // Regra do Lucas (2026-11-22): a lista de espera só mostra conversa
+    // de lead VERIFICADO. Contato não verificado, fake, Partner (MF) ou
+    // fora da janela coletada fica fora da lista e dos contadores.
+    const verifiedIds = verifiedContactIds(a, contacts);
+    const knownIds = new Set(contacts.map((c) => c.id));
     for (const cv of list) {
       const un = cv.unreadCount ?? 0;
       if (un > 0) {
-        m.unreadConversations++;
-        m.unread += un;
-        const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
-        if (last && now - last < 7 * day) m.unreadHot7d++;
-        waiting.push({
-          contactName: cv.contactName || "Unknown contact",
-          unreadCount: un,
-          lastActivity: last ? fmtChicago(last) : null,
-          preview: previewText(cv.lastMessageBody),
-          channel: channelLabel(cv),
-        });
+        if (cv.contactId && verifiedIds.has(cv.contactId)) {
+          m.unreadConversations++;
+          m.unread += un;
+          const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
+          if (last && now - last < 7 * day) m.unreadHot7d++;
+          waiting.push({
+            contactName: cv.contactName || "Unknown contact",
+            unreadCount: un,
+            lastActivity: last ? fmtChicago(last) : null,
+            preview: previewText(cv.lastMessageBody),
+            channel: channelLabel(cv),
+          });
+        } else {
+          waitingHidden++;
+          m.unreadHidden++;
+          if (!cv.contactId || !knownIds.has(cv.contactId)) {
+            waitingHiddenUnknown++;
+            m.unreadHiddenUnknown++;
+          }
+        }
       } else {
         upToDate++;
       }
@@ -499,6 +562,8 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
     weekLeads,
     fakesAll,
     waiting,
+    waitingHidden,
+    waitingHiddenUnknown,
     conversationsLoaded,
     conversationsTotal,
     upToDate,
@@ -568,4 +633,77 @@ export function unverifiedWeekContacts(contacts: HLContact[], now: number): HLCo
 /** Compradores Partner US$ 1 da conta (marcador: source do Partner Plan). */
 export function partnerBuyerContacts(a: Account, contacts: HLContact[]): HLContact[] {
   return contacts.filter((c) => isPartnerBuyer(a, c));
+}
+
+// ------------------------------------------------- verificação completa
+// Botão "Verify leads" (pedido do Lucas, 2026-11-22): sob demanda, pagina
+// por TODOS os contatos da location, sem o teto de 500 da coleta normal e
+// sem cache, e classifica cada um com a regra única do painel. Só leitura:
+// não exclui nem altera nada no HighLevel.
+
+export interface VerifyResult {
+  slug: string;
+  account: string;
+  total: number; // total de contatos na location, segundo a API
+  scanned: number; // contatos efetivamente lidos e classificados
+  verified: number;
+  unverified: number;
+  fakes: number;
+  partner: number; // compradores Partner US$ 1 (só Magnetic Funnels US)
+  checkedAt: string; // ISO
+}
+
+/** Lê TODAS as páginas de contatos da location (lotes paralelos de 5). */
+async function fetchAllContacts(a: Account, pit: string): Promise<{ contacts: HLContact[]; total: number }> {
+  const contacts: HLContact[] = [];
+  let total = 0;
+  const BATCH = 5;
+  const MAX_PAGE = 400; // trava de segurança: 40 mil contatos
+  for (let start = 1; start <= MAX_PAGE; start += BATCH) {
+    const pages = Array.from({ length: BATCH }, (_, i) => start + i).filter((p) => p <= MAX_PAGE);
+    const results = await Promise.all(
+      pages.map(async (page) => {
+        return (await hlFetch(`/contacts/?locationId=${a.locationId}&limit=100&page=${page}`, pit, true)) as {
+          contacts?: HLContact[];
+          meta?: { total?: number; nextPage?: number | null };
+        };
+      }),
+    );
+    let stop = false;
+    for (const data of results) {
+      const batch = data.contacts ?? [];
+      contacts.push(...batch);
+      if (typeof data.meta?.total === "number") total = data.meta.total;
+      if (!data.meta?.nextPage || batch.length === 0) stop = true;
+    }
+    if (stop) break;
+  }
+  return { contacts, total: total || contacts.length };
+}
+
+export async function verifyAccountLeads(a: Account): Promise<VerifyResult> {
+  if (!a.locationId || !a.pitEnv) throw new Error("Account has no HighLevel location");
+  const pit = process.env[a.pitEnv];
+  if (!pit) throw new Error("Account token is not configured");
+
+  const { contacts, total } = await fetchAllContacts(a, pit);
+  const result: VerifyResult = {
+    slug: a.slug,
+    account: a.name,
+    total,
+    scanned: contacts.length,
+    verified: 0,
+    unverified: 0,
+    fakes: 0,
+    partner: 0,
+    checkedAt: new Date().toISOString(),
+  };
+  for (const c of contacts) {
+    const cls = classifyContact(a, c);
+    if (cls === "verified") result.verified++;
+    else if (cls === "unverified") result.unverified++;
+    else if (cls === "fake") result.fakes++;
+    else result.partner++;
+  }
+  return result;
 }
