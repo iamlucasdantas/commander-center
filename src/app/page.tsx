@@ -9,7 +9,9 @@ import RefreshButton from "@/components/RefreshButton";
 import LeadList from "@/components/LeadList";
 import LogPanel from "@/components/LogPanel";
 import { getAnalytics } from "@/lib/analytics";
-import { getState, stateConfigured } from "@/lib/state";
+import { getState, stateConfigured, effectivePriority } from "@/lib/state";
+import { getCommand } from "@/lib/command";
+import { buildDay, chicagoDateStr, fmtTime } from "@/lib/agenda";
 import { Delta, HEALTH_COLOR, HeroChart, Ring, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -194,6 +196,26 @@ export default async function Home() {
     .sort((x, y) => (y.ga4!.sessions28 ?? 0) - (x.ga4!.sessions28 ?? 0));
   const siteSessions = siteRows.reduce((s, r) => s + (r.ga4?.sessions28 ?? 0), 0);
 
+  // Central de comando (unificação, 2026-11-22): agenda de hoje,
+  // pendências P1 abertas e últimos deploys, dos snapshots do
+  // coletor diário (lib/command.ts) e do estado interno (tarefas).
+  const command = await getCommand();
+  const nowDate = new Date();
+  const todayItems = command.agenda
+    ? buildDay(command.agenda, chicagoDateStr(nowDate)).items
+        .filter((i) => i.allDay || new Date(i.end).getTime() > nowDate.getTime())
+        .slice(0, 4)
+    : [];
+  const panelState = stateConfigured() ? await getState(0) : null;
+  const openTasks = (panelState?.tasks ?? []).filter((t) => t.status === "open");
+  const openP1 = openTasks
+    .filter((t) => effectivePriority(t) === 1)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const latestDeploys = (command.vercel?.projects ?? [])
+    .flatMap((p) => p.deployments.map((d) => ({ project: p.name, d })))
+    .sort((a, b) => (a.d.createdAt < b.d.createdAt ? 1 : -1))
+    .slice(0, 3);
+
   const groups: Array<{ title: string; kinds: Account["kind"][] }> = [
     { title: "Company & community", kinds: ["empresa", "comunidade"] },
     { title: "Clients", kinds: ["cliente"] },
@@ -214,8 +236,11 @@ export default async function Home() {
       <p className="sub">
         Updated {now} · {okMetrics.length} of {conectaveis.length} locations live · clean leads only, fakes excluded
         <span className="navlinks">
+          <Link href="/agenda">Agenda</Link>
+          <Link href="/priorities">Priorities</Link>
           <Link href="/social">Social</Link>
           <Link href="/account/saazid">SAAZID · YouTube</Link>
+          <Link href="/vercel">Vercel</Link>
         </span>
       </p>
 
@@ -229,6 +254,71 @@ export default async function Home() {
         <div className="hero-chart">
           <HeroChart cur={series30} prev={seriesPrev30} />
           <div className="hint"><span style={{ color: "#F0772E" }}>—</span> last 30 days: {leads30Total} <span style={{ color: "#8A7A70" }}>- -</span> previous 30: {leadsPrev30Total} · Y axis: leads per day</div>
+        </div>
+      </div>
+
+      <div className="grid3">
+        <div className="card">
+          <div className="label">Today · Agenda</div>
+          {todayItems.length ? (
+            <>
+              <div style={{ marginTop: 6 }}>
+                {todayItems.map((i) => (
+                  <div className="rowline" key={i.key}>
+                    <span>{i.title}<small>{i.kind === "content" ? "Protected block" : i.kind === "ritual" ? "Weekly ritual" : i.calendar ?? ""}</small></span>
+                    <b>{i.allDay ? "All day" : fmtTime(i.start)}</b>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Link className="acctlink" href="/agenda" style={{ color: "#F0772E", fontWeight: 600, fontSize: 13 }}>Open the Agenda →</Link>
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>
+              {command.agenda ? "Nothing left on today's agenda." : "No agenda snapshot yet. The daily collector fills this in."}
+            </p>
+          )}
+        </div>
+        <div className="card">
+          <div className="label">Open P1 priorities</div>
+          <div className="value">{openP1.length}</div>
+          {openP1.length ? (
+            <>
+              <div>
+                {openP1.slice(0, 3).map((t) => (
+                  <div className="rowline" key={t.id}>
+                    <span>{t.title}{t.project ? <small>{t.project}</small> : null}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Link className="acctlink" href="/priorities" style={{ color: "#F0772E", fontWeight: 600, fontSize: 13 }}>Open Priorities →</Link>
+              </div>
+            </>
+          ) : (
+            <div className="hint">{openTasks.length} open in P2/P3 · nothing in P1 right now</div>
+          )}
+        </div>
+        <div className="card">
+          <div className="label">Latest deployments · Vercel</div>
+          {latestDeploys.length ? (
+            <>
+              <div style={{ marginTop: 6 }}>
+                {latestDeploys.map(({ project, d }) => (
+                  <div className="rowline" key={d.id}>
+                    <span>{project}<small>{d.commitMessage ?? d.state}</small></span>
+                    <span className={`statechip ${d.state === "READY" ? "ready" : d.state === "ERROR" ? "error" : "other"}`}>{d.state}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <Link className="acctlink" href="/vercel" style={{ color: "#F0772E", fontWeight: 600, fontSize: 13 }}>Open the Vercel panel →</Link>
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>No Vercel snapshot yet. The daily collector fills this in.</p>
+          )}
         </div>
       </div>
 

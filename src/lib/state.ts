@@ -47,6 +47,40 @@ export interface LogEntry {
   detail?: string;
 }
 
+/**
+ * Pendência do Lucas (unificação, 2026-11-22): o que ELE tem que
+ * fazer, classificado P1, P2 e P3 pela regra dele de 2026-11-18.
+ * Vive no armazenamento interno do painel, como o log. A lista
+ * inicial foi migrada da aba Prioridades da central Criação de
+ * Conteúdo, lida ao vivo em 2026-11-22: estava vazia (0 itens), e a
+ * migração carimba a data em tasksSeededAt sem inventar item nenhum.
+ */
+export interface PanelTask {
+  id: string;
+  title: string;
+  priority: 1 | 2 | 3;
+  project?: string;
+  note?: string;
+  /** Ticket de suporte: sem solução definitiva, é sempre P3 (regra forçada no servidor). */
+  supportTicket: boolean;
+  /** Solução definitiva (ferramenta, FAQ ou self-serve): libera o ticket da P3 forçada. */
+  definitiveSolution: boolean;
+  status: "open" | "done";
+  /** ISO da criação; a exibição converte para America/Chicago. */
+  createdAt: string;
+  completedAt?: string;
+  origin: "space-migration" | "panel";
+}
+
+/**
+ * A regra do Lucas (2026-11-18) numa função só, usada na escrita e
+ * na leitura: ticket de suporte sem solução definitiva é P3, sempre.
+ */
+export function effectivePriority(t: Pick<PanelTask, "priority" | "supportTicket" | "definitiveSolution">): 1 | 2 | 3 {
+  if (t.supportTicket && !t.definitiveSolution) return 3;
+  return t.priority;
+}
+
 export interface PanelState {
   /** Marcações internas de verificado: slug -> ids de contato. */
   verified: Record<string, string[]>;
@@ -54,13 +88,37 @@ export interface PanelState {
   dndApplied: Record<string, DndRecord[]>;
   /** Log do painel, do mais antigo ao mais novo (a exibição inverte). */
   log: LogEntry[];
+  /** Pendências do Lucas (P1/P2/P3), da mais antiga à mais nova. */
+  tasks: PanelTask[];
+  /** ISO da migração inicial das pendências (lida da central, vazia, em 2026-11-22). */
+  tasksSeededAt?: string;
 }
 
 const PANEL_STATE_PATH = "panel-state.json";
 const LOG_CAP = 2000;
 
 function emptyState(): PanelState {
-  return { verified: {}, dndApplied: {}, log: [] };
+  return { verified: {}, dndApplied: {}, log: [], tasks: [] };
+}
+
+function normalizeTask(raw: unknown): PanelTask | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Partial<PanelTask>;
+  if (typeof t.id !== "string" || typeof t.title !== "string") return null;
+  const priority = t.priority === 1 || t.priority === 2 || t.priority === 3 ? t.priority : 3;
+  return {
+    id: t.id,
+    title: t.title,
+    priority,
+    project: typeof t.project === "string" && t.project ? t.project : undefined,
+    note: typeof t.note === "string" && t.note ? t.note : undefined,
+    supportTicket: t.supportTicket === true,
+    definitiveSolution: t.definitiveSolution === true,
+    status: t.status === "done" ? "done" : "open",
+    createdAt: typeof t.createdAt === "string" ? t.createdAt : new Date(0).toISOString(),
+    completedAt: typeof t.completedAt === "string" ? t.completedAt : undefined,
+    origin: t.origin === "space-migration" ? "space-migration" : "panel",
+  };
 }
 
 export function stateConfigured(): boolean {
@@ -95,8 +153,21 @@ function normalize(raw: unknown): PanelState {
     if (Array.isArray(o.log)) {
       s.log = o.log.filter((e): e is LogEntry => Boolean(e) && typeof e === "object" && typeof (e as LogEntry).id === "string");
     }
+    if (Array.isArray(o.tasks)) {
+      s.tasks = o.tasks.map(normalizeTask).filter((t): t is PanelTask => t !== null);
+    }
+    if (typeof o.tasksSeededAt === "string") s.tasksSeededAt = o.tasksSeededAt;
   }
   return s;
+}
+
+export function makeTask(partial: Omit<PanelTask, "id" | "createdAt" | "status">): PanelTask {
+  return {
+    ...partial,
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    createdAt: new Date().toISOString(),
+    status: "open",
+  };
 }
 
 /** Leitura fresca da store, direto da origem, sem cache de CDN. */
