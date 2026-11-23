@@ -84,7 +84,9 @@ export async function POST(req: Request) {
   try {
     await mutateState((s) => {
       if (!s.tasksSeededAt) s.tasksSeededAt = MIGRATION_ISO;
-      s.tasks.push(task);
+      // Idempotente: se uma nova tentativa da mutateState reaplicar
+      // esta função sobre um estado que já tem a tarefa, não duplica.
+      if (!s.tasks.some((t) => t.id === task.id)) s.tasks.push(task);
     });
   } catch {
     return NextResponse.json({ ok: false, error: "The internal storage did not answer" }, { status: 502 });
@@ -102,15 +104,25 @@ export async function PATCH(req: Request) {
   if (!stateConfigured()) {
     return NextResponse.json({ ok: false, error: "Internal storage is not configured yet" }, { status: 503 });
   }
+  // No toggle, o alvo é calculado ANTES da mutação e a mutação só
+  // SETA o alvo: idempotente se a mutateState reaplicar a função.
+  let toggleTarget: "open" | "done" | null = null;
+  if (action === "toggle") {
+    const cur = (await getState(0)).tasks.find((x) => x.id === id);
+    if (!cur) {
+      return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+    }
+    toggleTarget = cur.status === "open" ? "done" : "open";
+  }
   let updated: PanelTask | null = null;
   try {
     await mutateState((s) => {
       const t = s.tasks.find((x) => x.id === id);
       if (!t) return;
-      if (action === "toggle") {
-        if (t.status === "open") {
+      if (action === "toggle" && toggleTarget) {
+        if (toggleTarget === "done") {
           t.status = "done";
-          t.completedAt = new Date().toISOString();
+          if (!t.completedAt) t.completedAt = new Date().toISOString();
         } else {
           t.status = "open";
           t.completedAt = undefined;

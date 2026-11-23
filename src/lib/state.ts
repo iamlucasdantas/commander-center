@@ -92,6 +92,12 @@ export interface PanelState {
   tasks: PanelTask[];
   /** ISO da migração inicial das pendências (lida da central, vazia, em 2026-11-22). */
   tasksSeededAt?: string;
+  /** Nonce da última escrita, gravado no documento pela writeRemote e
+   * conferido pela mutateState. PRECISA sobreviver ao normalize: sem
+   * ele a conferência nunca casa, a mutateState reaplica a mutação nas
+   * 3 tentativas e tudo que é append sai triplicado (bug achado no
+   * teste das pendências, 2026-11-22). */
+  _nonce?: string;
 }
 
 const PANEL_STATE_PATH = "panel-state.json";
@@ -157,6 +163,7 @@ function normalize(raw: unknown): PanelState {
       s.tasks = o.tasks.map(normalizeTask).filter((t): t is PanelTask => t !== null);
     }
     if (typeof o.tasksSeededAt === "string") s.tasksSeededAt = o.tasksSeededAt;
+    if (typeof o._nonce === "string") s._nonce = o._nonce;
   }
   return s;
 }
