@@ -170,9 +170,9 @@ export default function Chrome({
           </Link>
         ))}
         <div className="v2-sidefoot">
-          Preview build on /v2. The current version is untouched.
+          Commander Center 2.0 is the home since Nov 24, 2026.
           <br />
-          <Link href="/">Back to the current version</Link>
+          <Link href="/v1">Previous version (v1, until Dec 24)</Link>
         </div>
       </aside>
       <div className="v2-main">
