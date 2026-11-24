@@ -131,7 +131,7 @@ export default async function V2AccountPage({
         <p style={{ width: "100%", margin: "2px 0 0", fontSize: 15, lineHeight: 1.6, color: "#FCE3D4" }}>{diagnosis}</p>
       </div>
 
-      <div className="kpis">
+      <div className="kpis v2-kpis">
         <div className="card" title="Source: HighLevel conversations, verified leads only.">
           <div className="label">Waiting for reply</div>
           <div className="value">{d.waitingCount}</div>

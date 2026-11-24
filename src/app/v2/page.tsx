@@ -160,7 +160,7 @@ export default async function Cockpit({
         </div>
       </div>
 
-      <div className="kpis">
+      <div className="kpis v2-kpis">
         <Link href="/v2/waiting" className="card" style={{ textDecoration: "none", color: "inherit" }}
           title="Source: HighLevel conversations, verified leads only. Waiting = the last message is the client's.">
           <div className="label">Waiting for reply</div>
