@@ -1,0 +1,119 @@
+/* Commander Center 2.0 (/v2): chrome e componentes próprios.
+   Arquivo separado de propósito: o globals.css é da versão atual e
+   não muda. Aqui só entram classes prefixadas v2-, reaproveitando a
+   identidade Magnetic Funnels (fundo #0D0D0D, chama #F0772E → #C0240A,
+   tint #FCE3D4, Archivo Black + Poppins, já carregados no layout raiz). */
+
+.v2-shell { display: flex; min-height: 100vh; align-items: stretch; }
+
+/* Sidebar fixa (vira topo no celular) */
+.v2-side { width: 238px; flex: none; position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #100C0A; border-right: 1px solid #2B2320; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
+.v2-brand { padding: 2px 8px 16px; }
+.v2-brand .wordmark { font-size: 10.5px; }
+.v2-brandname { font-family: "Archivo Black", sans-serif; font-size: 17px; margin-top: 2px; }
+.v2-brandname .flame { background: linear-gradient(120deg, #F0772E, #EB611C 55%, #C0240A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.v2-navitem { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 10px; color: #CBBBAE; text-decoration: none; font-size: 14px; font-weight: 500; }
+.v2-navitem:hover { background: #1D1713; color: #F7EFE9; }
+.v2-navitem.on { background: linear-gradient(120deg, rgba(240, 119, 46, .18), rgba(192, 36, 10, .10)); color: #FCE3D4; font-weight: 600; }
+.v2-badge { margin-left: auto; background: #C0240A; color: #FFF7F2; font-size: 11px; font-weight: 700; min-width: 22px; text-align: center; padding: 2px 7px; border-radius: 999px; }
+.v2-sidefoot { margin-top: auto; padding: 14px 8px 2px; border-top: 1px solid #241D19; font-size: 12px; color: #8A7A70; line-height: 1.6; }
+.v2-sidefoot a { color: #F0772E; font-weight: 600; text-decoration: none; }
+.v2-sidefoot a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Coluna principal e barra superior */
+.v2-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.v2-top { position: sticky; top: 0; z-index: 40; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 18px; background: rgba(13, 13, 13, .92); backdrop-filter: blur(8px); border-bottom: 1px solid #2B2320; }
+.v2-content { width: 100%; max-width: 1180px; margin: 0 auto; padding: 22px 18px 52px; }
+.v2-updated { color: #8A7A70; font-size: 12px; margin-left: auto; }
+
+/* Busca global */
+.v2-search { position: relative; flex: 1 1 260px; max-width: 430px; }
+.v2-search input { width: 100%; background: #171210; border: 1px solid #3A2E28; color: #F7EFE9; border-radius: 10px; padding: 9px 12px; font-family: "Poppins", sans-serif; font-size: 13.5px; }
+.v2-search input::placeholder { color: #8A7A70; }
+.v2-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #1B1410; border: 1px solid #3A2E28; border-radius: 12px; overflow: hidden; box-shadow: 0 14px 40px rgba(0, 0, 0, .55); z-index: 60; }
+.v2-result { display: block; padding: 10px 13px; color: #F7EFE9; text-decoration: none; font-size: 13.5px; border-bottom: 1px solid #241D19; }
+.v2-result:last-child { border-bottom: none; }
+.v2-result:hover { background: #241A14; }
+.v2-result small { display: block; color: #B7A69B; font-size: 12px; margin-top: 1px; }
+.v2-result .kind { color: #F0772E; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+
+/* Seletor de período */
+.v2-period { display: inline-flex; background: #171210; border: 1px solid #3A2E28; border-radius: 999px; padding: 3px; gap: 2px; }
+.v2-period button { font-family: "Poppins", sans-serif; font-size: 12.5px; font-weight: 600; padding: 5px 13px; border-radius: 999px; border: none; background: transparent; color: #B7A69B; cursor: pointer; }
+.v2-period button.on { background: linear-gradient(120deg, #F0772E, #C0240A); color: #FFF7F2; }
+
+/* Cartão "connect" (métrica ainda não conectada): borda tracejada, sem número */
+.v2-connect { border: 1.5px dashed #5B4A42; border-radius: 18px; padding: 20px; background: rgba(23, 18, 15, .45); }
+.v2-connect .label { color: #B7A69B; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.v2-connect .big { font-family: "Archivo Black", sans-serif; font-size: 22px; color: #FFD97C; margin: 10px 0 6px; letter-spacing: .4px; }
+.v2-connect p { color: #B7A69B; font-size: 12.5px; line-height: 1.55; }
+
+/* "This week in 3 lines" */
+.v2-lines { display: grid; gap: 8px; }
+.v2-line { display: flex; gap: 12px; align-items: baseline; font-size: 15.5px; line-height: 1.5; }
+.v2-line .n { font-family: "Archivo Black", sans-serif; color: #F0772E; font-size: 15px; flex: none; }
+
+/* Cockpit: fila + coluna direita */
+.v2-cockpit { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+@media (min-width: 1020px) { .v2-cockpit { grid-template-columns: 2fr 1fr; } }
+.v2-qitem { display: flex; gap: 16px; align-items: flex-start; background: #17120F; border: 1px solid #2B2320; border-left: 5px solid #5B4A42; border-radius: 16px; padding: 16px 18px; }
+.v2-qitem.sev3 { border-left-color: #FF6B6B; background: #1D1214; }
+.v2-qitem.sev2 { border-left-color: #FFD97C; }
+.v2-qitem.sev1 { border-left-color: #F0772E; }
+.v2-qactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.v2-qactions a.btnlink { display: inline-block; background: linear-gradient(120deg, #F0772E, #C0240A); color: #FFF7F2; font-weight: 700; font-size: 12.5px; padding: 8px 14px; border-radius: 10px; text-decoration: none; }
+
+/* Chips de segmento */
+.v2-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.v2-chip { font-size: 12.5px; font-weight: 600; padding: 6px 14px; border-radius: 999px; border: 1px solid #3A2E28; background: #1D1713; color: #B7A69B; text-decoration: none; }
+.v2-chip:hover { color: #F7EFE9; }
+.v2-chip.on { background: linear-gradient(120deg, #F0772E, #C0240A); border-color: transparent; color: #FFF7F2; }
+
+/* Tabela compacta de contas */
+.v2-tablewrap { overflow-x: auto; background: #17120F; border: 1px solid #2B2320; border-radius: 18px; }
+table.v2-table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 720px; }
+table.v2-table th, table.v2-table td { padding: 9px 13px; text-align: left; border-bottom: 1px solid #241D19; vertical-align: middle; }
+table.v2-table th { color: #B7A69B; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; cursor: pointer; user-select: none; white-space: nowrap; }
+table.v2-table th:hover { color: #F7EFE9; }
+table.v2-table tbody tr { cursor: pointer; }
+table.v2-table tbody tr:hover { background: #1D1713; }
+table.v2-table tr:last-child td { border-bottom: none; }
+.v2-seg { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #241D19; color: #CBBBAE; white-space: nowrap; margin-left: 8px; vertical-align: 2px; }
+.v2-status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.v2-reason { display: block; color: #B7A69B; font-size: 12px; margin-top: 2px; max-width: 300px; white-space: normal; line-height: 1.45; }
+
+/* Drawer lateral da conta */
+.v2-drawerback { position: fixed; inset: 0; background: rgba(5, 3, 2, .62); z-index: 80; }
+.v2-drawer { position: fixed; top: 0; right: 0; height: 100dvh; width: min(410px, 94vw); background: #17120F; border-left: 1px solid #3A2E28; z-index: 90; padding: 22px; overflow-y: auto; box-shadow: -18px 0 50px rgba(0, 0, 0, .5); }
+.v2-drawer h3 { font-family: "Archivo Black", sans-serif; font-weight: 400; font-size: 19px; line-height: 1.3; }
+.v2-drow { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #241D19; font-size: 14px; align-items: baseline; }
+.v2-drow:last-child { border-bottom: none; }
+.v2-drow small { color: #B7A69B; display: block; font-size: 12px; }
+.v2-drow b { font-family: "Archivo Black", sans-serif; font-weight: 400; font-size: 16px; white-space: nowrap; }
+.v2-close { position: absolute; top: 14px; right: 14px; background: transparent; border: 1px solid #3A2E28; color: #B7A69B; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; }
+.v2-close:hover { color: #F7EFE9; }
+
+/* Log agrupado */
+.v2-logrow { border-bottom: 1px solid #241D19; padding: 11px 0; }
+.v2-logrow:last-child { border-bottom: none; }
+.v2-logmain { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
+.v2-count { background: #3A1E1E; color: #FF9D9D; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.v2-expand { background: transparent; border: none; color: #F0772E; font-family: "Poppins", sans-serif; font-weight: 600; font-size: 12.5px; cursor: pointer; padding: 0; }
+.v2-logdetail { margin: 8px 0 4px; padding: 10px 13px; background: #120E0C; border: 1px solid #241D19; border-radius: 10px; font-size: 12.5px; color: #CBBBAE; line-height: 1.6; word-break: break-word; white-space: pre-wrap; max-height: 260px; overflow-y: auto; }
+
+/* Página da conta v2 */
+.v2-diag { font-size: 16.5px; line-height: 1.55; color: #FCE3D4; }
+.v2-gaplist { list-style: none; display: grid; gap: 9px; font-size: 13.5px; color: #CBBBAE; line-height: 1.55; }
+.v2-gaplist li { display: flex; gap: 10px; align-items: flex-start; }
+.v2-gaplist .box { flex: none; width: 15px; height: 15px; border: 1.5px solid #5B4A42; border-radius: 4px; margin-top: 2px; }
+
+/* Celular: sidebar vira topo */
+@media (max-width: 900px) {
+  .v2-shell { flex-direction: column; }
+  .v2-side { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px; border-right: none; border-bottom: 1px solid #2B2320; }
+  .v2-brand { padding: 0 8px 0 2px; }
+  .v2-navitem { padding: 7px 9px; font-size: 13px; }
+  .v2-sidefoot { display: none; }
+  .v2-content { padding: 16px 12px 44px; }
+  .v2-top { padding: 10px 12px; }
+}
