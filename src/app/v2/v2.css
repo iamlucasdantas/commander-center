@@ -144,7 +144,8 @@ table.v2-table tr:last-child td { border-bottom: none; }
 .v2-fmissing { color: #B7A69B; font-size: 12.5px; line-height: 1.5; flex: 1 1 260px; }
 
 /* "Do next" da aba Overview */
-.v2-next { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid #241D19; }
+.v2-next { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #241D19; }
+.v2-next .btn { margin-top: 1px; }
 .v2-next:last-child { border-bottom: none; }
 .v2-next .n { font-family: "Archivo Black", sans-serif; color: #F0772E; font-size: 15px; flex: none; }
 .v2-next .btn { margin-left: auto; }
