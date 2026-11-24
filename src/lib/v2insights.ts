@@ -218,10 +218,13 @@ export function buildThreeLines(data: V2Data[]): string[] {
   const totalWaiting = data.reduce((s, x) => s + x.d.waitingCount, 0);
   if (totalWaiting > 0) {
     const worst = [...data].filter((x) => x.d.waitingCount > 0).sort((x, y) => y.d.waitingCount - x.d.waitingCount)[0];
-    const oldest = Math.max(...data.map((x) => x.d.waitingOldestMin ?? 0));
+    const oldestHolder = [...data].filter((x) => x.d.waitingOldestMin !== null).sort((x, y) => (y.d.waitingOldestMin ?? 0) - (x.d.waitingOldestMin ?? 0))[0];
+    const oldestText = oldestHolder
+      ? ` The oldest single wait is at ${oldestHolder.a.name}, ${fmtAge(oldestHolder.d.waitingOldestMin!)}.`
+      : "";
     lines.push({
       score: 1000 + totalWaiting,
-      text: `${totalWaiting} conversation${totalWaiting === 1 ? "" : "s"} waiting for a reply, ${worst.d.waitingCount} at ${worst.a.name}, the oldest for ${fmtAge(oldest)}.`,
+      text: `${totalWaiting} conversation${totalWaiting === 1 ? "" : "s"} waiting for a reply, ${worst.d.waitingCount} at ${worst.a.name}.${oldestText}`,
     });
   }
 

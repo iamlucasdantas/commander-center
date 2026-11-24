@@ -40,7 +40,7 @@ export default async function V2AccountPage({
       <div>
         {back}
         <h1>{a.name}</h1>
-        <p className="sub">{cfg?.title ?? "YouTube channel"} · main KPI: {cfg?.kpiLabel ?? "channel growth"}</p>
+        <p className="sub">{cfg?.title ?? "YouTube channel"} · {cfg?.kpiLabel ?? "Main KPI: channel growth"}</p>
         {yt ? (
           <div className="card">
             <div className="label">{yt.handle} · {yt.title}</div>
@@ -109,7 +109,7 @@ export default async function V2AccountPage({
         <div>
           <h1 style={{ margin: 0 }}>{a.name}</h1>
           <p className="sub" style={{ margin: "4px 0 0" }}>
-            {cfg ? `${cfg.title} · main KPI: ${cfg.kpiLabel}` : "Account"} · data from {fetched} Chicago
+            {cfg ? `${cfg.title} · ${cfg.kpiLabel}` : "Account"} · data from {fetched} Chicago
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
