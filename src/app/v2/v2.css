@@ -67,7 +67,17 @@
 .v2-qitem.sev2 { border-left-color: #FFD97C; }
 .v2-qitem.sev1 { border-left-color: #F0772E; }
 .v2-qactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.v2-qactions a.btnlink { display: inline-block; background: linear-gradient(120deg, #F0772E, #C0240A); color: #FFF7F2; font-weight: 700; font-size: 12.5px; padding: 8px 14px; border-radius: 10px; text-decoration: none; }
+.v2-qactions a.btnlink, a.btnlink { display: inline-block; background: linear-gradient(120deg, #F0772E, #C0240A); color: #FFF7F2; font-weight: 700; font-size: 12.5px; padding: 8px 14px; border-radius: 10px; text-decoration: none; }
+
+/* Diagnóstico da página da conta (spec seção 4): status + motivo
+   numa linha, a frase de diagnóstico por regra embaixo. */
+.v2-diagnosis { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: #171310; border: 1px solid #2B2320; border-radius: 14px; padding: 14px 16px; margin: 4px 0 16px; }
+.v2-diagnosis .v2-status { font-weight: 700; }
+
+/* Setup gaps da página da conta: checklist legível. */
+.v2-gap { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid #241D19; }
+.v2-gap:last-child { border-bottom: none; }
+.v2-gap .box { flex: none; width: 15px; height: 15px; margin-top: 3px; border: 1.5px solid #8A7A70; border-radius: 4px; }
 
 /* Chips de segmento */
 .v2-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }

@@ -32,7 +32,7 @@ export default async function V2AccountPage({
   const cfg = SERVICE_CONFIG[slug];
   const analytics = await getAnalytics();
   const snap = analytics.sites[slug];
-  const back = <Link href="/v2#accounts" className="back">← All accounts</Link>;
+  const back = <Link href="/v2#accounts" className="backlink">← All accounts</Link>;
 
   if (slug === "saazid") {
     const yt = analytics.youtube?.["saazid"];
