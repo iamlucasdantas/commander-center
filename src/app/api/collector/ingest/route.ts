@@ -45,6 +45,7 @@ export async function POST(req: Request) {
     sites: Object.keys(state.sites).length,
     socialCards: state.social?.cards.length ?? 0,
     youtube: Object.keys(state.youtube ?? {}),
+    stripe: state.stripe ? { collectedAt: state.stripe.collectedAt, accounts: state.stripe.accounts.length, error: state.stripe.error ?? null } : undefined,
     agenda: command?.agenda ? { collectedAt: command.agenda.collectedAt, events: command.agenda.events.length } : undefined,
     vercel: command?.vercel ? { collectedAt: command.vercel.collectedAt, projects: command.vercel.projects.length } : undefined,
   });
@@ -65,6 +66,7 @@ export async function GET(req: Request) {
     youtube: Object.fromEntries(
       Object.entries(state.youtube ?? {}).map(([k, v]) => [k, v.collectedAt]),
     ),
+    stripe: state.stripe?.collectedAt ?? null,
     agenda: command.agenda?.collectedAt ?? null,
     vercel: command.vercel?.collectedAt ?? null,
   });

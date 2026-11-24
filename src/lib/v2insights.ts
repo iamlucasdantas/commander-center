@@ -10,6 +10,7 @@
 import { money, moneyShort, pctChange } from "./insights";
 import { fmtAge, type V2AccountData } from "./v2data";
 import type { Account } from "./accounts";
+import type { SiteSnapshot } from "./analytics";
 
 export interface V2Data {
   a: Account;
@@ -299,6 +300,221 @@ export function diagnosisFor(
     return `${d.waitingCount} conversation${d.waitingCount === 1 ? "" : "s"} waiting for a reply, the oldest for ${fmtAge(d.waitingOldestMin)}. Clear the queue today.`;
   }
   return "No leak above threshold right now: the queue is clear and volume is steady. Keep the rhythm.";
+}
+
+// ------------------------------------------------- funil (etapa 4)
+
+/**
+ * Funil "From Google to a booked job" da página da conta (spec
+ * seção 4, etapa 4): Impressions → Clicks → Sessions → Contacts →
+ * Responded → Booked → Won. Cada etapa carrega a fonte no tooltip e
+ * a taxa de conversão vinda da etapa anterior quando as duas são
+ * números reais. Etapa sem fonte entra como "connect" nomeando o
+ * que falta, NUNCA como zero disfarçado.
+ *
+ * Janelas honestas: Google e site usam o snapshot de 28 dias do
+ * coletor; contatos verificados são somados nos mesmos 28 dias a
+ * partir da série diária; "responded" sai da janela de conversas
+ * coletada (100 mais recentes); "won" usa a janela de 30 dias das
+ * oportunidades, dita no tooltip.
+ */
+export interface FunnelStage {
+  key: string;
+  label: string;
+  value: number | null; // null = não conectado
+  display: string;
+  sub: string | null;
+  source: string; // tooltip com a fonte e a janela
+  convFromPrev: number | null; // 0..1, conversão vinda da etapa anterior
+  missing: string | null; // quando connect: o que falta
+}
+
+function convRate(cur: number | null, prev: number | null): number | null {
+  if (cur === null || prev === null || prev <= 0) return null;
+  return cur / prev;
+}
+
+export function buildFunnel(d: V2AccountData, snap?: SiteSnapshot | null): FunnelStage[] {
+  const gsc = snap?.gsc ?? null;
+  const ga4 = snap?.ga4 ?? null;
+  const impressions = gsc ? gsc.impressions28 : null;
+  const clicks = gsc ? gsc.clicks28 : null;
+  // Sessões: GA4 presente mas sem linhas no período é zero REAL
+  // (hasData false); GA4 ausente é "connect".
+  const sessions = ga4 ? ga4.sessions28 : null;
+  // Verificados nos últimos 28 dias: a série diária tem 30 dias
+  // (índice 29 = hoje); os últimos 28 são os índices 2..29.
+  const contacts28 = d.leadsByDay30V.slice(2).reduce((s, n) => s + n, 0);
+  const responded = d.respondedCount;
+  const gscMissing = snap
+    ? "The daily collector has no Search Console snapshot for this site yet."
+    : "No Search Console source is connected for this site yet.";
+
+  return [
+    {
+      key: "impressions", label: "Impressions",
+      value: impressions,
+      display: impressions !== null ? impressions.toLocaleString("en-US") : "CONNECT",
+      sub: gsc && gsc.sites > 1 ? `${gsc.sites} sites summed` : null,
+      source: "Source: Google Search Console, last 28 days, daily collector snapshot.",
+      convFromPrev: null,
+      missing: impressions === null ? gscMissing : null,
+    },
+    {
+      key: "clicks", label: "Clicks",
+      value: clicks,
+      display: clicks !== null ? clicks.toLocaleString("en-US") : "CONNECT",
+      sub: gsc ? `CTR ${(gsc.ctr28 * 100).toFixed(1)}% · avg. position ${gsc.position28 ? gsc.position28.toFixed(1) : "—"}` : null,
+      source: "Source: Google Search Console, last 28 days, daily collector snapshot.",
+      convFromPrev: convRate(clicks, impressions),
+      missing: clicks === null ? gscMissing : null,
+    },
+    {
+      key: "sessions", label: "Sessions",
+      value: sessions,
+      display: sessions !== null ? sessions.toLocaleString("en-US") : "CONNECT",
+      sub: ga4 ? (ga4.hasData ? `${ga4.users28.toLocaleString("en-US")} users` : "GA4 connected, no data in the period") : null,
+      source: "Source: Google Analytics (GA4), last 28 days, daily collector snapshot.",
+      convFromPrev: convRate(sessions, clicks),
+      missing: sessions === null ? "No GA4 property is connected for this site yet." : null,
+    },
+    {
+      key: "contacts", label: "Contacts",
+      value: contacts28,
+      display: contacts28.toLocaleString("en-US"),
+      sub: "verified only",
+      source: "Source: HighLevel contacts classified verified by the panel rules, last 28 days.",
+      convFromPrev: convRate(contacts28, sessions),
+      missing: null,
+    },
+    {
+      key: "responded", label: "Responded",
+      value: responded,
+      display: responded.toLocaleString("en-US"),
+      sub: `of ${d.conversationsWindow} conversations read`,
+      source: "Source: HighLevel conversations (100 most recent), verified leads only: conversations whose last message is from the business.",
+      convFromPrev: convRate(responded, contacts28),
+      missing: null,
+    },
+    {
+      key: "booked", label: "Booked",
+      value: null,
+      display: "CONNECT",
+      sub: null,
+      source: "Not connected: appointments need the calendars scope, which this account's HighLevel key does not have.",
+      convFromPrev: null,
+      missing: "Needs the calendars scope on this account's HighLevel key. Booked jobs are the north-star metric of the spec; nothing is estimated here.",
+    },
+    {
+      key: "won", label: "Won",
+      value: d.won30Value,
+      display: money(d.won30Value),
+      sub: `${d.won30Count} opportunit${d.won30Count === 1 ? "y" : "ies"} won`,
+      source: "Source: HighLevel opportunities with status won, changed in the last 30 days.",
+      convFromPrev: null, // a etapa anterior (booked) não está conectada; taxa aqui enganaria
+      missing: null,
+    },
+  ];
+}
+
+/** Taxa de conversão legível: "3.2%" ou "—". */
+export function fmtConv(rate: number | null): string {
+  if (rate === null) return "—";
+  const pct = rate * 100;
+  return `${pct >= 10 ? Math.round(pct) : pct.toFixed(1)}%`;
+}
+
+// ------------------------------------------------- "Do next" (etapa 4)
+
+export interface NextAction {
+  text: string;
+  href: string;
+  external: boolean;
+}
+
+/**
+ * Lista "Do next" da aba Overview: as próximas ações da conta, por
+ * regra, na ordem do dinheiro e do vazamento maior. Cada item tem o
+ * deep link para onde a ação acontece.
+ */
+export function doNextFor(
+  a: Account,
+  d: V2AccountData,
+  hlLinkFor: (area: "conversations" | "opportunities" | "dashboard") => string,
+  gsc?: { impressions28: number; clicks28: number } | null,
+): NextAction[] {
+  const out: NextAction[] = [];
+
+  if (d.waitingCount > 0 && d.waiting.length > 0) {
+    const oldest = d.waiting[0];
+    out.push({
+      text: `Reply to ${d.waitingCount} waiting conversation${d.waitingCount === 1 ? "" : "s"}, starting with ${oldest.contactName} (waiting ${fmtAge(oldest.ageMin)})`,
+      href: hlLinkFor("conversations"),
+      external: true,
+    });
+  }
+  if (d.idleCount >= 1 && d.idleValue >= 500) {
+    out.push({
+      text: `Follow up the ${d.idleCount} idle opportunit${d.idleCount === 1 ? "y" : "ies"} (${money(d.idleValue)} parked for 14+ days) or close them`,
+      href: hlLinkFor("opportunities"),
+      external: true,
+    });
+  }
+  if (gsc && gsc.impressions28 >= 100 && gsc.clicks28 === 0) {
+    out.push({
+      text: `Rewrite the titles and meta descriptions Google already shows: ${gsc.impressions28.toLocaleString("en-US")} impressions and 0 clicks in 28 days (moves in the Website & Google tab)`,
+      href: `/v2/account/${a.slug}?tab=website`,
+      external: false,
+    });
+  }
+  const h = accountHealthV2(d);
+  if (h.dropPct !== null && h.dropPct <= -25 && h.avgWeekly >= 2) {
+    out.push({
+      text: `Check the lead source and the form: verified contacts are down ${Math.abs(h.dropPct)}% against the 4-week average`,
+      href: hlLinkFor("dashboard"),
+      external: true,
+    });
+  }
+  if (out.length === 0) {
+    out.push({
+      text: "Keep the rhythm: open the Website & Google tab and take the top suggested move",
+      href: `/v2/account/${a.slug}?tab=website`,
+      external: false,
+    });
+  }
+  return out.slice(0, 4);
+}
+
+// --------------------------------------- suggested moves (etapa 4)
+
+/**
+ * "Suggested move" de cada consulta do Search Console: regra simples
+ * e declarada, a partir de cliques, impressões e posição da própria
+ * consulta. Nada de IA e nada de promessa: é a leitura direta do
+ * número (posição 11 a 20 com CTR baixo pede título e primeira
+ * página; 0 cliques com muitas impressões pede revisar intenção e
+ * título).
+ */
+export function suggestedMove(q: { clicks: number; impressions: number; position: number }): string {
+  const ctr = q.impressions > 0 ? q.clicks / q.impressions : 0;
+  if (q.impressions < 10) return "Too little data: watch it, no move yet.";
+  if (q.clicks === 0 && q.impressions >= 50) {
+    return "Shown but never clicked: rewrite the title and meta description to match this exact search intent.";
+  }
+  if (q.position > 20) {
+    return "Deep in the results: this term needs content depth and links, or a page for a more specific query.";
+  }
+  if (q.position >= 11) {
+    return ctr < 0.02
+      ? "Page two with weak clicks: sharpen the title and add internal links to push onto page one."
+      : "Page two: a small push (title, internal links) can move this onto page one.";
+  }
+  if (q.position <= 10 && ctr < 0.01 && q.impressions >= 50) {
+    return "Page one but almost never clicked: the title is not selling the click; rewrite it.";
+  }
+  if (q.position <= 3 && q.clicks > 0) return "Working well: protect this page and keep it updated.";
+  if (q.position <= 10) return "Solid: keep the page fresh and watch the position.";
+  return "Watch: gather more data before acting.";
 }
 
 export { money, moneyShort };

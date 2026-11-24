@@ -59,6 +59,8 @@ export interface V2AccountData {
   waiting: WaitingItem[]; // ordenado por idade, maior primeiro
   waitingCount: number;
   waitingOldestMin: number | null;
+  respondedCount: number; // conversas (leads verificados) cuja última mensagem é da empresa
+  conversationsWindow: number; // conversas lidas na janela (limite da busca: 100)
   unreadConversations: number; // estilo v1 (unreadCount > 0, verificados), referência
   opportunitiesOpen: number;
   opportunitiesValue: number;
@@ -185,7 +187,7 @@ function emptyData(slug: string): V2AccountData {
     contacts30dV: 0, contactsPrev30dV: 0, contacts7dAll: 0, contactsPrev7dAll: 0,
     leadsByDay30V: Array(30).fill(0), leadsByDayPrev30V: Array(30).fill(0),
     historyContacts: 0, fakeCount30d: 0,
-    waiting: [], waitingCount: 0, waitingOldestMin: null, unreadConversations: 0,
+    waiting: [], waitingCount: 0, waitingOldestMin: null, respondedCount: 0, conversationsWindow: 0, unreadConversations: 0,
     opportunitiesOpen: 0, opportunitiesValue: 0, idleCount: 0, idleValue: 0,
     won30Count: 0, won30Value: 0, topOpportunities: [], searchContacts: [],
   };
@@ -249,9 +251,13 @@ export async function fetchV2Account(a: Account): Promise<V2AccountData> {
       const conv = (await withRetry(() => hlGet(`/conversations/search?locationId=${a.locationId}&limit=100`, pit), 2)) as {
         conversations?: HLConversation[];
       };
+      d.conversationsWindow = (conv.conversations ?? []).length;
       for (const cv of conv.conversations ?? []) {
         if (!cv.contactId || goneIds.has(cv.contactId)) continue;
         if (!verifiedIds.has(cv.contactId)) continue;
+        // Etapa "Responded" do funil (etapa 4): a última mensagem é da
+        // empresa, ou seja, ela respondeu por último naquela conversa.
+        if (cv.lastMessageDirection === "outbound") d.respondedCount++;
         const unread = cv.unreadCount ?? 0;
         if (unread > 0) d.unreadConversations++;
         const dir = cv.lastMessageDirection;

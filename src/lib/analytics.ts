@@ -94,10 +94,43 @@ export interface YoutubeSnapshot {
   error?: string;
 }
 
+/**
+ * Snapshot do Stripe (etapa 5 da spec 2.0): MRR e assinaturas das
+ * duas contas do Lucas, coletados pelo collect_stripe.py via o
+ * conector Stripe conectado no ambiente da Muse. Valores de MRR
+ * ficam NA MOEDA DA CONTA (BRL e USD nunca são somados). O histórico
+ * diário de MRR nasce junto: é ele que um dia alimenta NRR e a
+ * quebra novo/expansão/contração/churn; até lá, nada é estimado.
+ */
+export interface StripeAccountSnapshot {
+  /** "brasil" | "international" */
+  key: string;
+  name: string;
+  accountId: string;
+  currency: string; // "BRL" | "USD"
+  activeSubscriptions: number;
+  trialingSubscriptions: number;
+  pastDueSubscriptions: number;
+  /** MRR normalizado para o mês, na moeda da conta (unidades, não centavos). */
+  mrr: number;
+  newSubscriptions30d: number;
+  canceledSubscriptions30d: number;
+}
+
+export interface StripeSnapshot {
+  collectedAt: string; // ISO
+  accounts: StripeAccountSnapshot[];
+  /** Um ponto por dia de coleta: MRR por conta, para o histórico. */
+  history: { date: string; mrrByAccount: Record<string, number> }[];
+  /** Erro da última tentativa (ex.: conector pedindo reautorização). */
+  error?: string;
+}
+
 export interface AnalyticsState {
   sites: Record<string, SiteSnapshot>;
   social?: SocialSnapshot;
   youtube?: Record<string, YoutubeSnapshot>;
+  stripe?: StripeSnapshot;
 }
 
 const ANALYTICS_PATH = "analytics-state.json";
@@ -126,6 +159,9 @@ function normalize(raw: unknown): AnalyticsState {
     for (const [k, v] of Object.entries(raw.youtube)) {
       if (isObj(v) && typeof v.collectedAt === "string") s.youtube[k] = v as unknown as YoutubeSnapshot;
     }
+  }
+  if (isObj(raw.stripe) && typeof raw.stripe.collectedAt === "string") {
+    s.stripe = raw.stripe as unknown as StripeSnapshot;
   }
   return s;
 }
@@ -180,6 +216,30 @@ export async function ingestAnalytics(payload: Partial<AnalyticsState>): Promise
           gsc: v.gsc ?? prev?.gsc,
         };
       }
+    }
+    if (payload.stripe) {
+      // Mesmo padrão do YouTube: coleta que falhou (erro, sem contas)
+      // mantém as últimas contas boas e anota o erro; coleta boa
+      // acrescenta o ponto do dia ao histórico de MRR.
+      const prev = working.stripe;
+      const history: StripeSnapshot["history"] = [...(prev?.history ?? [])];
+      const accounts = payload.stripe.accounts.length ? payload.stripe.accounts : prev?.accounts ?? [];
+      if (payload.stripe.accounts.length) {
+        const today = payload.stripe.collectedAt.slice(0, 10);
+        const point = {
+          date: today,
+          mrrByAccount: Object.fromEntries(payload.stripe.accounts.map((x) => [x.key, x.mrr])),
+        };
+        const idx = history.findIndex((pt) => pt.date === today);
+        if (idx >= 0) history[idx] = point;
+        else history.push(point);
+      }
+      working.stripe = {
+        collectedAt: payload.stripe.collectedAt,
+        accounts,
+        history: history.slice(-180),
+        error: payload.stripe.error,
+      };
     }
     if (payload.social) working.social = payload.social;
     if (payload.youtube) {

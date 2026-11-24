@@ -1,31 +1,58 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ACCOUNTS, notConnectedReason } from "@/lib/accounts";
+import { ACCOUNTS, SITE_SOURCES, notConnectedReason } from "@/lib/accounts";
 import { fetchV2Account, fmtAge, hlLink } from "@/lib/v2data";
-import { accountHealthV2, diagnosisFor } from "@/lib/v2insights";
-import { V2_HEALTH_COLOR } from "@/lib/v2insights";
+import {
+  accountHealthV2, diagnosisFor, buildFunnel, fmtConv, doNextFor, suggestedMove,
+  V2_HEALTH_COLOR, type FunnelStage,
+} from "@/lib/v2insights";
 import { money } from "@/lib/insights";
 import { SERVICE_CONFIG } from "@/lib/services";
 import { getAnalytics } from "@/lib/analytics";
-import { TZ } from "@/components/viz";
+import { fetchAccountDetail, type AccountDetail } from "@/lib/hl";
+import { getState, stateConfigured } from "@/lib/state";
+import { groupLogEntries } from "@/lib/v2log";
+import LeadList from "@/components/LeadList";
+import GroupedLog from "@/components/v2/GroupedLog";
+import { Delta, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
 
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "contacts", label: "Contacts" },
+  { key: "website", label: "Website & Google" },
+  { key: "log", label: "Log" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
 /**
- * Página da conta no /v2, versão desta rodada (spec seção 4,
- * nascimento simples): cabeçalho, diagnóstico por regra, cards de
- * decisão (waiting com idade, pipeline, won, fakes), lista de
- * espera, oportunidades e checklist de setup gaps. Speed to lead e
- * Missed calls entram como "connect": dependem de escopos que as
- * chaves atuais não têm. O funil completo e as abas são a etapa 4;
- * a página completa atual continua em /account/[slug].
+ * Página da conta no /v2, COMPLETA (spec seção 4, etapa 4):
+ * cabeçalho, frase de diagnóstico por regra e as quatro abas.
+ *   - Overview: o funil "From Google to a booked job" (cada etapa
+ *     com a fonte no tooltip e a conversão para a próxima; Booked
+ *     entra como CONNECT porque as chaves não têm o escopo de
+ *     calendários), os cards de decisão, "Do next" por regra, a
+ *     lista de espera, as top oportunidades e os Setup gaps como
+ *     checklist com a correção nomeada.
+ *   - Contacts: a MESMA lista da versão atual (LeadList com filtro
+ *     All, Verified, Unverified, verificação manual seletiva interna
+ *     e exclusão de não verificados), sem regra nova.
+ *   - Website & Google: GA4 e Search Console do snapshot diário,
+ *     com a coluna "Suggested move" gerada por regra declarada.
+ *   - Log: o log agrupado filtrado por esta conta.
+ * A página completa da versão atual continua em /account/[slug].
  */
 export default async function V2AccountPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { slug } = await params;
+  const sp = await searchParams;
+  const tab: TabKey = TABS.some((t) => t.key === sp.tab) ? (sp.tab as TabKey) : "overview";
   const a = ACCOUNTS.find((x) => x.slug === slug);
   if (!a) notFound();
 
@@ -102,6 +129,21 @@ export default async function V2AccountPage({
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: TZ,
   });
 
+  // Dados pesados só são buscados na aba que os usa (a página abre
+  // rápido e o cache de 5 minutos da coleta é compartilhado).
+  let detail: AccountDetail | null = null;
+  let detailFailed = false;
+  if (tab === "contacts") {
+    try {
+      detail = await fetchAccountDetail(a);
+    } catch {
+      detailFailed = true;
+    }
+  }
+  const accountLog = tab === "log" && stateConfigured()
+    ? (await getState(0)).log.filter((e) => e.slug === slug)
+    : [];
+
   return (
     <div>
       {back}
@@ -131,6 +173,107 @@ export default async function V2AccountPage({
         <p style={{ width: "100%", margin: "2px 0 0", fontSize: 15, lineHeight: 1.6, color: "#FCE3D4" }}>{diagnosis}</p>
       </div>
 
+      <nav className="v2-tabs" aria-label="Account sections">
+        {TABS.map((t) => (
+          <Link
+            key={t.key}
+            href={t.key === "overview" ? `/v2/account/${slug}` : `/v2/account/${slug}?tab=${t.key}`}
+            className={`v2-tab${tab === t.key ? " on" : ""}`}
+            aria-current={tab === t.key ? "page" : undefined}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "overview" && (
+        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} />
+      )}
+
+      {tab === "contacts" && (
+        <div>
+          <h2>New leads this week{detail ? ` · ${detail.weekLeads.length}` : ""}</h2>
+          <div className="card">
+            {detailFailed ? (
+              <p style={{ fontSize: 14, color: "#B7A69B" }}>
+                The lead list could not be loaded just now. Use the global Refresh in the top bar, or open the
+                list on the current version&apos;s account page.
+              </p>
+            ) : detail ? (
+              <LeadList leads={detail.weekLeads} deleteSlug={slug} verifySlug={slug} emptyText="No new leads in the last 7 days." />
+            ) : null}
+          </div>
+          {detail && (detail.metrics.fakeCount30d > 0 || detail.partnerTotal > 0) && (
+            <p className="foot">
+              {detail.metrics.fakeCount30d > 0 && (
+                <>{detail.metrics.fakeCount30d} fake{detail.metrics.fakeCount30d === 1 ? "" : "s"} quarantined in the last 30 days, kept out of every metric. </>
+              )}
+              {detail.partnerTotal > 0 && (
+                <>{detail.partnerTotal} Partner $1 buyers hidden from this account&apos;s lists. </>
+              )}
+              The full quarantine lives on the{" "}
+              <Link href={`/account/${slug}`} style={{ color: "#F0772E", fontWeight: 600 }}>current version&apos;s account page</Link>.
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "website" && <WebsiteTab slug={slug} snap={snap} />}
+
+      {tab === "log" && (
+        <div>
+          <h2>Account log</h2>
+          <p className="sub">
+            {accountLog.length} entries for this account, grouped by action, minute and run · names live in the details ·
+            read-only grouping, nothing was deleted or rewritten
+          </p>
+          <div className="card">
+            <GroupedLog groups={groupLogEntries(accountLog)} />
+          </div>
+          <p className="foot">
+            Manual entries are added from the{" "}
+            <Link href={`/account/${slug}`} style={{ color: "#F0772E", fontWeight: 600 }}>current version&apos;s account page</Link>{" "}
+            (Log &amp; tasks), the same as before.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- Overview
+
+function OverviewTab({
+  slug, d, snap, stripeLive,
+}: {
+  slug: string;
+  d: Awaited<ReturnType<typeof fetchV2Account>>;
+  snap?: import("@/lib/analytics").SiteSnapshot;
+  stripeLive: boolean;
+}) {
+  const a = ACCOUNTS.find((x) => x.slug === slug)!;
+  const cfg = SERVICE_CONFIG[slug];
+  const funnel = buildFunnel(d, snap ?? null);
+  const next = doNextFor(a, d, (area) => hlLink(a.locationId, area), snap?.gsc ?? null);
+  // Os gaps de MRR do mapa de serviços nasceram antes do Stripe
+  // entrar no painel (etapa 5): com snapshot vivo, o gap vira ponteiro.
+  const gaps = (cfg?.pendencies ?? []).map((p) =>
+    stripeLive && p.startsWith("MRR is not in the panel yet")
+      ? "MRR now lives on the Agency business page, from the daily Stripe snapshot."
+      : p,
+  );
+
+  return (
+    <div>
+      <h2>From Google to a booked job</h2>
+      <div className="card">
+        <Funnel stages={funnel} wonCount={d.won30Count} />
+        <p className="hint" style={{ marginTop: 10 }}>
+          Every number carries its source in the tooltip. Google and site stages use the collector&apos;s 28-day
+          snapshot; HighLevel stages use the panel&apos;s own windows, named in each tooltip.
+        </p>
+      </div>
+
       <div className="kpis v2-kpis">
         <div className="card" title="Source: HighLevel conversations, verified leads only.">
           <div className="label">Waiting for reply</div>
@@ -140,12 +283,12 @@ export default async function V2AccountPage({
         <div className="v2-connect" title="Not connected: the conversations messages endpoint answers 401 with the current key scopes.">
           <div className="label">Speed to lead</div>
           <div className="big">CONNECT</div>
-          <p>Needs the messages scope on this account's HighLevel key.</p>
+          <p>Needs the messages scope on this account&apos;s HighLevel key.</p>
         </div>
         <div className="v2-connect" title="Not connected: call detail needs the same messages scope; the conversations endpoint answers 401 today.">
           <div className="label">Missed calls</div>
           <div className="big">CONNECT</div>
-          <p>Needs the call detail scope on this account's HighLevel key.</p>
+          <p>Needs the call detail scope on this account&apos;s HighLevel key.</p>
         </div>
         <div className="card" title="Source: HighLevel opportunities, open.">
           <div className="label">Open pipeline</div>
@@ -162,6 +305,21 @@ export default async function V2AccountPage({
           <div className="value">{d.fakeCount30d}</div>
           <div className="hint">kept out of the metrics</div>
         </div>
+      </div>
+
+      <h2>Do next</h2>
+      <div className="card">
+        {next.map((n, i) => (
+          <div className="v2-next" key={i}>
+            <span className="n">{i + 1}</span>
+            <span style={{ fontSize: 14.5, lineHeight: 1.55 }}>{n.text}</span>
+            {n.external ? (
+              <a className="btn mini" style={{ textDecoration: "none", flex: "none" }} href={n.href} target="_blank" rel="noreferrer">Open</a>
+            ) : (
+              <Link className="btn mini" style={{ textDecoration: "none", flex: "none" }} href={n.href}>Open</Link>
+            )}
+          </div>
+        ))}
       </div>
 
       {d.waiting.length > 0 && (
@@ -198,11 +356,11 @@ export default async function V2AccountPage({
         </>
       )}
 
-      {cfg && cfg.pendencies.length > 0 && (
+      {gaps.length > 0 && (
         <>
           <h2>Setup gaps</h2>
           <div className="card">
-            {cfg.pendencies.map((p, i) => (
+            {gaps.map((p, i) => (
               <div className="v2-gap" key={i}>
                 <span className="box" />
                 <span style={{ fontSize: 13.5, lineHeight: 1.55 }}>{p}</span>
@@ -215,7 +373,216 @@ export default async function V2AccountPage({
       <p className="foot">
         The full account page of the current version (service blocks, website, log and tasks) is{" "}
         <Link href={`/account/${slug}`} style={{ color: "#F0772E", fontWeight: 600 }}>here</Link>.
-        The funnel and the tabs land in step 4 of the 2.0 spec.
+      </p>
+    </div>
+  );
+}
+
+/** Funil em etapas: número grande, fonte no tooltip, conversão entre etapas. */
+function Funnel({ stages, wonCount }: { stages: FunnelStage[]; wonCount: number }) {
+  // Escala das barras: contagens das etapas (o Won entra pela
+  // contagem de oportunidades, porque o valor dele é dinheiro).
+  const barOf = (s: FunnelStage): number | null =>
+    s.key === "won" ? wonCount : s.value;
+  const counts = stages.map(barOf).filter((v): v is number => v !== null && v > 0);
+  const max = counts.length ? Math.max(...counts) : 0;
+
+  return (
+    <div>
+      {stages.map((s, i) => {
+        const bv = barOf(s);
+        const width = bv !== null && max > 0 && bv > 0
+          ? Math.max(3, Math.round((Math.sqrt(bv) / Math.sqrt(max)) * 100))
+          : 0;
+        return (
+          <div key={s.key}>
+            {i > 0 && (
+              <div className="v2-fconv" title={stages[i - 1].missing || s.missing ? "Conversion not shown: one of the two stages is not connected." : undefined}>
+                {s.missing || stages[i - 1].missing
+                  ? "↓ not connected"
+                  : `↓ ${fmtConv(s.convFromPrev)} of the stage above`}
+              </div>
+            )}
+            {s.missing ? (
+              <div className="v2-fstage v2-fconnect" title={s.source}>
+                <span className="v2-flabel">{s.label}</span>
+                <span className="v2-fbig">CONNECT</span>
+                <span className="v2-fmissing">{s.missing}</span>
+              </div>
+            ) : (
+              <div className="v2-fstage" title={s.source}>
+                <span className="v2-flabel">{s.label}</span>
+                <span className="v2-fvalue">{s.display}</span>
+                {s.sub && <span className="v2-fsub">{s.sub}</span>}
+                <span className="v2-fbar"><i style={{ width: `${width}%` }} /></span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ------------------------------------------------------ Website & Google
+
+function WebsiteTab({ slug, snap }: { slug: string; snap?: import("@/lib/analytics").SiteSnapshot }) {
+  const src = SITE_SOURCES[slug];
+  const hasSource = Boolean(src && ((src.ga4?.length ?? 0) > 0 || (src.gsc?.length ?? 0) > 0));
+  const ga4 = snap?.ga4;
+  const gsc = snap?.gsc;
+  const direct = ga4?.channels.find((c) => c.name.toLowerCase() === "direct");
+  const directShare = direct && ga4 && ga4.sessions28 > 0 ? direct.sessions / ga4.sessions28 : 0;
+
+  if (!hasSource) {
+    return (
+      <div className="card">
+        <div className="label">No analytics source</div>
+        <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>
+          No analytics source is connected for this account&apos;s site yet: no GA4 property and no
+          Search Console site were found in the connected accounts. Nothing is estimated here.
+        </p>
+      </div>
+    );
+  }
+  if (!snap) {
+    return (
+      <div className="card">
+        <div className="label">Waiting for the first snapshot</div>
+        <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>
+          A source exists for this site, but the daily collector has not delivered a snapshot yet.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {ga4 && (
+        <>
+          <h2>Google Analytics · last 28 days{ga4.properties > 1 ? ` · ${ga4.properties} properties summed` : ""}</h2>
+          <div className="card">
+            {!ga4.hasData ? (
+              <p style={{ fontSize: 14, color: "#B7A69B" }}>
+                GA4 connected, no data in the period: the property answered, but recorded no sessions
+                in the last 28 days.
+              </p>
+            ) : (
+              <>
+                <div className="kpis" style={{ marginTop: 4 }}>
+                  <div>
+                    <div className="label">Sessions</div>
+                    <div className="value">{ga4.sessions28.toLocaleString("en-US")}</div>
+                    <Delta cur={ga4.sessions28} prev={ga4.sessionsPrev28} />
+                  </div>
+                  <div>
+                    <div className="label">Users</div>
+                    <div className="value">{ga4.users28.toLocaleString("en-US")}</div>
+                    <Delta cur={ga4.users28} prev={ga4.usersPrev28} />
+                  </div>
+                  <div>
+                    <div className="label">Page views</div>
+                    <div className="value">{ga4.views28.toLocaleString("en-US")}</div>
+                    <Delta cur={ga4.views28} prev={ga4.viewsPrev28} />
+                  </div>
+                  <div>
+                    <div className="label">Sessions per day</div>
+                    <div style={{ marginTop: 10 }}>
+                      <Spark data={ga4.byDay} w={190} h={44} showPeak />
+                    </div>
+                    <div className="hint">last 28 days</div>
+                  </div>
+                </div>
+                {ga4.channels.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    {ga4.channels.map((c) => (
+                      <div className="conv" key={c.name}>
+                        <span>{c.name}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          <span className="minibar" style={{ width: 110, marginTop: 0 }}>
+                            <i style={{ width: `${ga4.sessions28 ? Math.max(2, Math.round((c.sessions / ga4.sessions28) * 100)) : 0}%` }} />
+                          </span>
+                          <b>{c.sessions.toLocaleString("en-US")}</b>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {directShare > 0.8 && ga4.sessions28 >= 50 && (
+                  <p className="hint" style={{ marginTop: 10, color: "#FFD97C" }}>
+                    Direct is {Math.round(directShare * 100)}% of sessions: check for internal or bot traffic
+                    (and filter internal IPs in GA4) before trusting this total.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {gsc && (
+        <>
+          <h2>Google Search Console · last 28 days{gsc.sites > 1 ? ` · ${gsc.sites} sites summed` : ""}</h2>
+          <div className="card">
+            <div className="kpis" style={{ marginTop: 4 }}>
+              <div>
+                <div className="label">Clicks</div>
+                <div className="value">{gsc.clicks28.toLocaleString("en-US")}</div>
+              </div>
+              <div>
+                <div className="label">Impressions</div>
+                <div className="value">{gsc.impressions28.toLocaleString("en-US")}</div>
+              </div>
+              <div>
+                <div className="label">CTR</div>
+                <div className="value">{(gsc.ctr28 * 100).toFixed(1)}%</div>
+              </div>
+              <div>
+                <div className="label">Avg. position</div>
+                <div className="value">{gsc.position28 ? gsc.position28.toFixed(1) : "—"}</div>
+              </div>
+            </div>
+            {gsc.topQueries.length > 0 && (
+              <div className="v2-tablewrap" style={{ marginTop: 14 }}>
+                <table className="v2-qtable">
+                  <thead>
+                    <tr>
+                      <th>Top searches</th>
+                      <th>Clicks</th>
+                      <th>Impressions</th>
+                      <th>CTR</th>
+                      <th>Position</th>
+                      <th>Suggested move</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gsc.topQueries.map((q) => (
+                      <tr key={q.query}>
+                        <td><b>{q.query}</b></td>
+                        <td>{q.clicks.toLocaleString("en-US")}</td>
+                        <td>{q.impressions.toLocaleString("en-US")}</td>
+                        <td>{q.impressions > 0 ? `${((q.clicks / q.impressions) * 100).toFixed(1)}%` : "—"}</td>
+                        <td>{q.position.toFixed(1)}</td>
+                        <td className="v2-move">{suggestedMove(q)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="hint" style={{ marginTop: 12 }}>
+              Suggested moves come from a fixed rule over each query&apos;s own numbers (position 11 to 20 with
+              weak clicks asks for title and internal links; many impressions with 0 clicks asks for a title
+              that matches the intent). No AI, no promise, just the reading of the number.
+            </p>
+          </div>
+        </>
+      )}
+
+      <p className="hint" style={{ marginTop: 12 }}>
+        Snapshot collected {new Date(snap.collectedAt).toLocaleString("en-US", {
+          month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ,
+        })} (Chicago) by the daily collector from the connected Google accounts. Search Console data lags about 3 days.
       </p>
     </div>
   );

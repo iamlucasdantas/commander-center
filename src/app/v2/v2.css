@@ -123,6 +123,39 @@ table.v2-table tr:last-child td { border-bottom: none; }
 .v2-gaplist li { display: flex; gap: 10px; align-items: flex-start; }
 .v2-gaplist .box { flex: none; width: 15px; height: 15px; border: 1.5px solid #5B4A42; border-radius: 4px; margin-top: 2px; }
 
+/* Abas da página da conta (etapa 4) */
+.v2-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid #2B2320; margin: 2px 0 18px; }
+.v2-tab { padding: 9px 15px; font-size: 14px; font-weight: 500; color: #B7A69B; text-decoration: none; border-bottom: 2.5px solid transparent; margin-bottom: -1px; }
+.v2-tab:hover { color: #F7EFE9; }
+.v2-tab.on { color: #FCE3D4; font-weight: 700; border-bottom-color: #F0772E; }
+
+/* Funil "From Google to a booked job" (etapa 4): etapa com número
+   grande e barra proporcional (raiz quadrada, para impressões não
+   esmagarem as etapas finais); etapa sem fonte vira connect. */
+.v2-fstage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 10px 2px; }
+.v2-flabel { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #B7A69B; min-width: 108px; }
+.v2-fvalue { font-family: "Archivo Black", sans-serif; font-size: 24px; color: #F7EFE9; }
+.v2-fsub { color: #B7A69B; font-size: 12.5px; }
+.v2-fbar { flex-basis: 100%; height: 5px; background: #241D19; border-radius: 999px; overflow: hidden; margin-top: 2px; }
+.v2-fbar i { display: block; height: 100%; background: linear-gradient(90deg, #F0772E, #C0240A); border-radius: 999px; }
+.v2-fconv { color: #8A7A70; font-size: 12px; font-weight: 600; padding: 1px 2px 1px 10px; border-left: 2px solid #2B2320; margin-left: 8px; }
+.v2-fconnect { border: 1.5px dashed #5B4A42; border-radius: 12px; padding: 12px 14px; margin: 4px 0; align-items: center; }
+.v2-fbig { font-family: "Archivo Black", sans-serif; font-size: 17px; color: #FFD97C; letter-spacing: .4px; }
+.v2-fmissing { color: #B7A69B; font-size: 12.5px; line-height: 1.5; flex: 1 1 260px; }
+
+/* "Do next" da aba Overview */
+.v2-next { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid #241D19; }
+.v2-next:last-child { border-bottom: none; }
+.v2-next .n { font-family: "Archivo Black", sans-serif; color: #F0772E; font-size: 15px; flex: none; }
+.v2-next .btn { margin-left: auto; }
+
+/* Tabela de consultas do Search Console com "Suggested move" */
+table.v2-qtable { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 680px; }
+table.v2-qtable th, table.v2-qtable td { padding: 9px 13px; text-align: left; border-bottom: 1px solid #241D19; vertical-align: top; }
+table.v2-qtable th { color: #B7A69B; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; white-space: nowrap; }
+table.v2-qtable tr:last-child td { border-bottom: none; }
+table.v2-qtable td.v2-move { color: #CBBBAE; line-height: 1.5; min-width: 230px; }
+
 /* Celular: sidebar vira topo */
 @media (max-width: 900px) {
   .v2-shell { flex-direction: column; }
