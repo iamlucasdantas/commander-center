@@ -76,7 +76,10 @@ export async function POST(req: Request) {
     note: cleanText(body?.note, 2000),
     supportTicket: body?.supportTicket === true,
     definitiveSolution: body?.definitiveSolution === true,
-    origin: "panel" as const,
+    // Agentes do OpenBot gravam quem são em `by` (porta MCP, 2026-11-25):
+    // a pendência nasce com origem "agent" e o nome fica visível.
+    origin: (cleanText(body?.by, 60) ? "agent" : "panel") as "agent" | "panel",
+    by: cleanText(body?.by, 60),
   };
   // A regra do Lucas, forçada na gravação: ticket sem solução definitiva é P3.
   draft.priority = effectivePriority(draft);

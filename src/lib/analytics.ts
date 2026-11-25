@@ -15,6 +15,7 @@
 // dados no período"), nunca como número inventado.
 
 import { get, put } from "@vercel/blob";
+import { mergeReputation, normalizeReputation, type ReputationSnapshot } from "./reputation";
 
 export interface Ga4Snapshot {
   sessions28: number;
@@ -131,6 +132,8 @@ export interface AnalyticsState {
   social?: SocialSnapshot;
   youtube?: Record<string, YoutubeSnapshot>;
   stripe?: StripeSnapshot;
+  /** Avaliações do Google por conta (slug), coletadas do Google Business Profile. Ver lib/reputation.ts. */
+  reputation?: Record<string, ReputationSnapshot>;
 }
 
 const ANALYTICS_PATH = "analytics-state.json";
@@ -162,6 +165,13 @@ function normalize(raw: unknown): AnalyticsState {
   }
   if (isObj(raw.stripe) && typeof raw.stripe.collectedAt === "string") {
     s.stripe = raw.stripe as unknown as StripeSnapshot;
+  }
+  if (isObj(raw.reputation)) {
+    s.reputation = {};
+    for (const [k, v] of Object.entries(raw.reputation)) {
+      const snap = normalizeReputation(v);
+      if (snap) s.reputation[k] = snap;
+    }
   }
   return s;
 }
@@ -242,6 +252,16 @@ export async function ingestAnalytics(payload: Partial<AnalyticsState>): Promise
       };
     }
     if (payload.social) working.social = payload.social;
+    if (payload.reputation) {
+      // Fusão por slug, como o YouTube: histórico preservado, ponto do
+      // dia acrescentado, coleta com erro mantém os últimos números.
+      working.reputation = working.reputation ?? {};
+      for (const [k, v] of Object.entries(payload.reputation)) {
+        const snap = normalizeReputation(v);
+        if (!snap) continue;
+        working.reputation[k] = mergeReputation(working.reputation[k], snap);
+      }
+    }
     if (payload.youtube) {
       working.youtube = working.youtube ?? {};
       for (const [k, v] of Object.entries(payload.youtube)) {

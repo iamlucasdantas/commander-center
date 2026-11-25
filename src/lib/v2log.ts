@@ -15,6 +15,7 @@ const ACTION_LABEL: Record<string, string> = {
   "delete-unverified": "Deletion",
   "partner-separate": "Partner separation",
   manual: "Manual entry",
+  agent: "Agent entry",
 };
 
 function minuteKey(iso: string): string {

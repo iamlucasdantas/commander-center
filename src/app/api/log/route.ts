@@ -36,6 +36,8 @@ export async function POST(req: Request) {
   const kind = body?.kind === "task" ? "task" : "log";
   const status = body?.status === "pending" ? "pending" : "completed";
   const detail = typeof body?.detail === "string" && body.detail.trim() ? body.detail.trim().slice(0, 4000) : undefined;
+  const byRaw = (body as { by?: unknown } | null)?.by;
+  const by = typeof byRaw === "string" && byRaw.trim() ? byRaw.trim().slice(0, 60) : undefined;
 
   const a = ACCOUNTS.find((x) => x.slug === slug);
   if (!a) {
@@ -51,11 +53,12 @@ export async function POST(req: Request) {
   const entry = makeLogEntry({
     slug: a.slug,
     account: a.name,
-    action: "manual",
+    action: by ? "agent" : "manual",
+    by,
     kind,
     status,
     title: title.slice(0, 300),
-    detail,
+    detail: by ? `by ${by}${detail ? ` · ${detail}` : ""}` : detail,
   });
   try {
     await mutateState((s) => {

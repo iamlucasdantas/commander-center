@@ -40,7 +40,9 @@ export interface LogEntry {
   at: string;
   slug: string;
   account: string;
-  action: "manual-verify" | "dnd-automation" | "dnd-revert" | "delete-unverified" | "partner-separate" | "manual";
+  action: "manual-verify" | "dnd-automation" | "dnd-revert" | "delete-unverified" | "partner-separate" | "manual" | "agent";
+  /** Quem gravou, quando foi um agente do OpenBot (ex.: "Account Manager"). */
+  by?: string;
   kind: "log" | "task";
   status: "pending" | "completed";
   title: string;
@@ -69,7 +71,9 @@ export interface PanelTask {
   /** ISO da criação; a exibição converte para America/Chicago. */
   createdAt: string;
   completedAt?: string;
-  origin: "space-migration" | "panel";
+  origin: "space-migration" | "panel" | "agent";
+  /** Agente do OpenBot que criou a pendência, quando origin = "agent". */
+  by?: string;
 }
 
 /**
@@ -123,7 +127,8 @@ function normalizeTask(raw: unknown): PanelTask | null {
     status: t.status === "done" ? "done" : "open",
     createdAt: typeof t.createdAt === "string" ? t.createdAt : new Date(0).toISOString(),
     completedAt: typeof t.completedAt === "string" ? t.completedAt : undefined,
-    origin: t.origin === "space-migration" ? "space-migration" : "panel",
+    origin: t.origin === "space-migration" ? "space-migration" : t.origin === "agent" ? "agent" : "panel",
+    by: typeof t.by === "string" && t.by ? t.by.slice(0, 60) : undefined,
   };
 }
 
