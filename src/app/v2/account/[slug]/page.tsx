@@ -59,6 +59,9 @@ export default async function V2AccountPage({
   const cfg = SERVICE_CONFIG[slug];
   const analytics = await getAnalytics();
   const snap = analytics.sites[slug];
+  // Avaliações do Google (Google Business Profile), quando o coletor
+  // de reputação já gravou um snapshot desta conta (2026-11-25).
+  const rep = analytics.reputation?.[slug];
   const back = <Link href="/v2#accounts" className="backlink">← All accounts</Link>;
 
   if (slug === "saazid") {
@@ -187,7 +190,7 @@ export default async function V2AccountPage({
       </nav>
 
       {tab === "overview" && (
-        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} />
+        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} repLive={Boolean(rep && !rep.error)} />
       )}
 
       {tab === "contacts" && (
@@ -218,7 +221,7 @@ export default async function V2AccountPage({
         </div>
       )}
 
-      {tab === "website" && <WebsiteTab slug={slug} snap={snap} />}
+      {tab === "website" && <WebsiteTab slug={slug} snap={snap} rep={rep} />}
 
       {tab === "log" && (
         <div>
@@ -244,12 +247,13 @@ export default async function V2AccountPage({
 // ------------------------------------------------------------- Overview
 
 function OverviewTab({
-  slug, d, snap, stripeLive,
+  slug, d, snap, stripeLive, repLive,
 }: {
   slug: string;
   d: Awaited<ReturnType<typeof fetchV2Account>>;
   snap?: import("@/lib/analytics").SiteSnapshot;
   stripeLive: boolean;
+  repLive: boolean;
 }) {
   const a = ACCOUNTS.find((x) => x.slug === slug)!;
   const cfg = SERVICE_CONFIG[slug];
@@ -260,7 +264,9 @@ function OverviewTab({
   const gaps = (cfg?.pendencies ?? []).map((p) =>
     stripeLive && p.startsWith("MRR is not in the panel yet")
       ? "MRR now lives on the Agency business page, from the daily Stripe snapshot."
-      : p,
+      : repLive && p.startsWith("Google reviews are not measurable yet")
+        ? "Google reviews now live in the Website & Google tab, from the daily Google Business Profile snapshot."
+        : p,
   );
 
   return (
@@ -426,7 +432,14 @@ function Funnel({ stages, wonCount }: { stages: FunnelStage[]; wonCount: number 
 
 // ------------------------------------------------------ Website & Google
 
-function WebsiteTab({ slug, snap }: { slug: string; snap?: import("@/lib/analytics").SiteSnapshot }) {
+function WebsiteTab({
+  slug, snap, rep,
+}: {
+  slug: string;
+  snap?: import("@/lib/analytics").SiteSnapshot;
+  rep?: import("@/lib/reputation").ReputationSnapshot;
+}) {
+  const reviews = rep ? <ReviewsCard rep={rep} /> : null;
   const src = SITE_SOURCES[slug];
   const hasSource = Boolean(src && ((src.ga4?.length ?? 0) > 0 || (src.gsc?.length ?? 0) > 0));
   const ga4 = snap?.ga4;
@@ -436,6 +449,8 @@ function WebsiteTab({ slug, snap }: { slug: string; snap?: import("@/lib/analyti
 
   if (!hasSource) {
     return (
+      <div>
+      {reviews}
       <div className="card">
         <div className="label">No analytics source</div>
         <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>
@@ -443,21 +458,26 @@ function WebsiteTab({ slug, snap }: { slug: string; snap?: import("@/lib/analyti
           Search Console site were found in the connected accounts. Nothing is estimated here.
         </p>
       </div>
+      </div>
     );
   }
   if (!snap) {
     return (
+      <div>
+      {reviews}
       <div className="card">
         <div className="label">Waiting for the first snapshot</div>
         <p style={{ fontSize: 14, color: "#B7A69B", marginTop: 8 }}>
           A source exists for this site, but the daily collector has not delivered a snapshot yet.
         </p>
       </div>
+      </div>
     );
   }
 
   return (
     <div>
+      {reviews}
       {ga4 && (
         <>
           <h2>Google Analytics · last 28 days{ga4.properties > 1 ? ` · ${ga4.properties} properties summed` : ""}</h2>
@@ -585,5 +605,85 @@ function WebsiteTab({ slug, snap }: { slug: string; snap?: import("@/lib/analyti
         })} (Chicago) by the daily collector from the connected Google accounts. Search Console data lags about 3 days.
       </p>
     </div>
+  );
+}
+
+// --------------------------------------------------------- Google reviews
+
+/**
+ * Bloco de reputação (2026-11-25): números do Google Business
+ * Profile gravados pelo coletor de reputação (lib/reputation.ts).
+ * Aparece só quando existe snapshot; sem ele, a pendência da conta
+ * continua dizendo que a fonte não está ligada.
+ */
+function ReviewsCard({ rep }: { rep: import("@/lib/reputation").ReputationSnapshot }) {
+  const collected = new Date(rep.collectedAt).toLocaleString("en-US", {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: TZ,
+  });
+  const prevAvg = [...rep.history].reverse().find(
+    (h) => h.averageRating !== null && new Date(h.date).getTime() <= Date.now() - 30 * 86_400_000,
+  )?.averageRating ?? null;
+  const avgDelta = prevAvg !== null && rep.averageRating !== null ? rep.averageRating - prevAvg : null;
+  const hasActions = [rep.calls30, rep.websiteClicks30, rep.directions30].some((v) => v !== null && v !== undefined);
+  return (
+    <>
+      <h2>Google reviews{rep.title ? ` · ${rep.title}` : ""}</h2>
+      <div className="card" title="Source: Google Business Profile, daily snapshot from the reputation collector.">
+        {rep.error && (
+          <p className="hint" style={{ color: "#FFD97C", marginBottom: 10 }}>
+            Last collection failed ({rep.error}); showing the last good numbers.
+          </p>
+        )}
+        <div className="kpis" style={{ marginTop: 4 }}>
+          <div>
+            <div className="label">Average rating</div>
+            <div className="value">{rep.averageRating !== null ? `${rep.averageRating.toFixed(1)}★` : "—"}</div>
+            <div className="hint">
+              {avgDelta !== null ? `${avgDelta >= 0 ? "+" : ""}${avgDelta.toFixed(2)} vs 30 days ago` : "no 30-day baseline yet"}
+            </div>
+          </div>
+          <div>
+            <div className="label">Total reviews</div>
+            <div className="value">{rep.totalReviews.toLocaleString("en-US")}</div>
+            <div className="hint">{rep.replied.toLocaleString("en-US")} replied · {rep.unreplied.toLocaleString("en-US")} without reply</div>
+          </div>
+          <div>
+            <div className="label">New · 30 days</div>
+            <div className="value">{rep.new30}</div>
+            <Delta cur={rep.new30} prev={rep.newPrev30} />
+          </div>
+          <div>
+            <div className="label">Replies · 30 days</div>
+            <div className="value">{rep.repliedLast30}</div>
+            <div className="hint">
+              {rep.avgReplyHours !== null
+                ? `avg reply time ${rep.avgReplyHours < 48 ? `${Math.round(rep.avgReplyHours)} h` : `${(rep.avgReplyHours / 24).toFixed(1)} d`}`
+                : "reply time not measured yet"}
+            </div>
+          </div>
+        </div>
+        {hasActions && (
+          <p className="hint" style={{ marginTop: 10 }}>
+            Profile actions, last 30 days: {rep.calls30 ?? "—"} calls · {rep.websiteClicks30 ?? "—"} website clicks · {rep.directions30 ?? "—"} direction requests.
+          </p>
+        )}
+        {rep.negativeUnreplied.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div className="label" style={{ color: "#FF6B6B" }}>Negative reviews without a reply · {rep.negativeUnreplied.length}</div>
+            {rep.negativeUnreplied.map((r, i) => (
+              <div className="conv" key={`${r.name}-${i}`}>
+                <span>
+                  <b>{"★".repeat(r.rating)}</b> {r.name}
+                  {r.when ? <small className="note"> · {new Date(r.when).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: TZ })}</small> : null}
+                  {r.excerpt ? <span style={{ color: "#B7A69B" }}> · “{r.excerpt}”</span> : null}
+                </span>
+                {r.url ? <a href={r.url} target="_blank" rel="noreferrer" style={{ color: "#F0772E", fontWeight: 600, fontSize: 13, textDecoration: "none" }}>Open</a> : null}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="hint" style={{ marginTop: 10 }}>Snapshot from {collected} Chicago · Google Business Profile location {rep.gbpLocation}</p>
+      </div>
+    </>
   );
 }
