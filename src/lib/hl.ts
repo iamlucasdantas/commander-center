@@ -10,6 +10,7 @@
 // Essas séries alimentam sparklines, comparações e o "what changed" sem
 // nenhuma chamada extra por conta.
 import { FAKE_NAME_PATTERNS, type Account } from "./accounts";
+import { SERVICE_CONFIG } from "./services";
 import { getPitToken } from "./pit";
 import { getState, stateConfigured } from "./state";
 
@@ -521,6 +522,25 @@ export interface OpportunityItem {
  * que hoje responde 401). Janela: as 100 conversas mais recentes
  * mescladas com as 100 conversas de telefone mais recentes.
  */
+export interface CallTypeSlice {
+  category: string;
+  count: number;
+}
+
+/** Uma ligação da semana, lida dos campos que o workflow pós-ligação
+ *  do agente de voz grava no contato (categoria, motivo, temperatura).
+ *  O CONTEÚDO da conversa (transcrição) não entra aqui: em conta
+ *  HIPAA a API de mensagens responde 401. Ver services.ts. */
+export interface CallWeekItem {
+  contactName: string;
+  when: number; // epoch ms da última atividade da conversa
+  category: string | null;
+  reason: string | null;
+  service: string | null;
+  temperature: string | null;
+  urgent: string | null;
+}
+
 export interface CallSummary {
   windowSize: number; // conversas na janela mesclada
   callConversations: number; // conversas com ligação na janela
@@ -530,6 +550,14 @@ export interface CallSummary {
   unknownDirection: number;
   activity7d: number; // conversas de ligação com atividade nos últimos 7 dias
   activity30d: number;
+  /** Tipos de ligação (campo "Call Category (AI Agent)" do contato),
+   *  lidos nas 40 conversas de ligação mais recentes da janela.
+   *  null quando a leitura dos contatos falhou nesta carga. */
+  types: CallTypeSlice[] | null;
+  categorized: number; // das lidas, quantas têm categoria gravada
+  typesRead: number; // quantas conversas de ligação entraram na leitura de tipos
+  /** Ligações com atividade nos últimos 7 dias, com os campos pós-ligação. */
+  weekItems: CallWeekItem[];
 }
 
 export interface WonSummary {
@@ -704,7 +732,79 @@ export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
           const last = cv.lastMessageDate ?? cv.createdAt ?? 0;
           return last > 0 && now - last < 30 * day;
         }).length,
+        types: null,
+        categorized: 0,
+        typesRead: 0,
+        weekItems: [],
       };
+
+      // Tipos de ligação e a semana do agente de voz: o workflow
+      // pós-ligação grava no CONTATO os campos "Call Category (AI
+      // Agent)", "Reason For Call", "Service of Interest (AI Agent)",
+      // "Lead Temperature (AI Agent)" e "Urgent Flag (AI Agent)".
+      // Esses campos são legíveis mesmo em conta HIPAA (a parede é a
+      // API de mensagens, não a de contatos). Só roda para contas com
+      // bloco de ligações no painel (showCalls), nas 40 conversas de
+      // ligação mais recentes da janela.
+      if (SERVICE_CONFIG[a.slug]?.showCalls) {
+        try {
+          const defs = (await withRetry(
+            () => hlGet(`/locations/${a.locationId}/customFields`, pit), 2,
+          )) as { customFields?: { id?: string; fieldKey?: string }[] };
+          const keyById = new Map<string, string>();
+          for (const f of defs.customFields ?? []) {
+            if (f.id && f.fieldKey) keyById.set(f.id, f.fieldKey);
+          }
+          const WANT: Record<string, "category" | "reason" | "service" | "temperature" | "urgent"> = {
+            "contact.call_category_ai_agent": "category",
+            "contact.reason_for_call": "reason",
+            "contact.service_of_interest_ai_agent": "service",
+            "contact.lead_temperature_ai_agent": "temperature",
+            "contact.urgent_flag_ai_agent": "urgent",
+          };
+          const recent = [...callConvs]
+            .sort((x, y) => (y.lastMessageDate ?? y.createdAt ?? 0) - (x.lastMessageDate ?? x.createdAt ?? 0))
+            .slice(0, 40);
+          const rows = await Promise.all(recent.map(async (cv) => {
+            const row: CallWeekItem = {
+              contactName: cv.contactName || "Unknown contact",
+              when: cv.lastMessageDate ?? cv.createdAt ?? 0,
+              category: null, reason: null, service: null, temperature: null, urgent: null,
+            };
+            if (!cv.contactId) return row;
+            try {
+              const one = (await hlGet(`/contacts/${cv.contactId}`, pit)) as {
+                contact?: { customFields?: { id?: string; value?: unknown }[] };
+              };
+              for (const cf of one.contact?.customFields ?? []) {
+                const key = cf.id ? keyById.get(cf.id) : undefined;
+                const slot = key ? WANT[key] : undefined;
+                if (!slot) continue;
+                const v = Array.isArray(cf.value) ? cf.value.join(", ") : cf.value;
+                const s = typeof v === "string" ? v.trim() : v != null ? String(v).trim() : "";
+                if (s) row[slot] = s.slice(0, 220);
+              }
+            } catch { /* contato ilegível nesta carga: linha fica sem campos */ }
+            return row;
+          }));
+          const counts = new Map<string, number>();
+          let categorized = 0;
+          for (const r of rows) {
+            if (r.category) {
+              categorized++;
+              counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+            }
+          }
+          calls.types = [...counts.entries()]
+            .map(([category, count]) => ({ category, count }))
+            .sort((x, y) => y.count - x.count);
+          calls.categorized = categorized;
+          calls.typesRead = rows.length;
+          calls.weekItems = rows
+            .filter((r) => r.when > 0 && now - r.when < 7 * day)
+            .sort((x, y) => y.when - x.when);
+        } catch { /* sem os campos, types fica null e a tela declara a falta */ }
+      }
     } catch { /* sem a busca de telefone, o resumo de ligações fica nulo */ }
   } catch { /* conversas são bônus, não derrubam a conta */ }
 

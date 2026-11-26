@@ -51,8 +51,10 @@ export interface ReputationSnapshot {
   calls30?: number | null;
   websiteClicks30?: number | null;
   directions30?: number | null;
-  /** Um ponto por dia de coleta, para os deltas. */
-  history: { date: string; totalReviews: number; averageRating: number | null; unreplied: number }[];
+  /** Um ponto por dia de coleta, para os deltas e as séries.
+   *  avgReplyHours e replied entraram no ponto em 2026-11-26: pontos
+   *  anteriores não os têm, e as séries começam quando há 2+ pontos. */
+  history: { date: string; totalReviews: number; averageRating: number | null; unreplied: number; avgReplyHours?: number | null; replied?: number }[];
   /** Erro da última tentativa (ex.: location não verificada), quando houve. */
   error?: string;
 }
@@ -93,6 +95,8 @@ export function normalizeReputation(raw: unknown): ReputationSnapshot | null {
           totalReviews: num(h.totalReviews),
           averageRating: numOrNull(h.averageRating),
           unreplied: num(h.unreplied),
+          avgReplyHours: numOrNull(h.avgReplyHours),
+          replied: typeof h.replied === "number" ? num(h.replied) : undefined,
         }))
     : [];
   return {
@@ -121,7 +125,7 @@ export function mergeReputation(prev: ReputationSnapshot | undefined, next: Repu
   const history = [...(prev?.history ?? [])];
   if (!next.error) {
     const today = next.collectedAt.slice(0, 10);
-    const point = { date: today, totalReviews: next.totalReviews, averageRating: next.averageRating, unreplied: next.unreplied };
+    const point = { date: today, totalReviews: next.totalReviews, averageRating: next.averageRating, unreplied: next.unreplied, avgReplyHours: next.avgReplyHours, replied: next.replied };
     const idx = history.findIndex((h) => h.date === today);
     if (idx >= 0) history[idx] = point;
     else history.push(point);
