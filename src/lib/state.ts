@@ -76,6 +76,43 @@ export interface PanelTask {
   by?: string;
 }
 
+export type SuggestionStatus = "nova" | "aprovada" | "descartada" | "feita";
+
+/**
+ * Sugestão de agente PARA UM CLIENTE (pedido do Lucas, 2026-11-26):
+ * os agentes do OpenBot (SEO, Social Media, Crescimento, Account
+ * Manager...) gravam aqui, pela rota /api/openbot/suggestions, o que
+ * deve ser feito para cada cliente: o quê, por quê, o plano completo
+ * em markdown e o prompt de execução pronto para o Lucas copiar e
+ * colar no agente responsável. A página do cliente no /v2 mostra
+ * esta lista como PRIMEIRO bloco. Vive no mesmo documento do painel
+ * (panel-state.json), como o log e as pendências. Sugestão sem plano
+ * completo e sem prompt é recusada na rota de escrita.
+ */
+export interface AgentSuggestion {
+  id: string;
+  /** location_id do HighLevel: a chave que os agentes usam. */
+  locationId: string;
+  /** Slug do painel, resolvido do location_id na gravação. */
+  slug: string;
+  /** Agente que sugeriu (ex.: "SEO", "Social Media", "Crescimento"). */
+  agent: string;
+  /** O que fazer. */
+  title: string;
+  /** Por que importa. */
+  why: string;
+  /** O plano completo, em markdown: passos e como fazer. */
+  planMd: string;
+  /** Prompt de execução pronto para colar no agente responsável. */
+  prompt: string;
+  status: SuggestionStatus;
+  /** ISO da criação; a exibição converte para America/Chicago. */
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const SUGGESTION_STATUSES: SuggestionStatus[] = ["nova", "aprovada", "descartada", "feita"];
+
 /**
  * A regra do Lucas (2026-11-18) numa função só, usada na escrita e
  * na leitura: ticket de suporte sem solução definitiva é P3, sempre.
@@ -94,6 +131,8 @@ export interface PanelState {
   log: LogEntry[];
   /** Pendências do Lucas (P1/P2/P3), da mais antiga à mais nova. */
   tasks: PanelTask[];
+  /** Sugestões dos agentes por cliente, da mais antiga à mais nova (a exibição inverte). */
+  suggestions: AgentSuggestion[];
   /** ISO da migração inicial das pendências (lida da central, vazia, em 2026-11-22). */
   tasksSeededAt?: string;
   /** Nonce da última escrita, gravado no documento pela writeRemote e
@@ -106,9 +145,33 @@ export interface PanelState {
 
 const PANEL_STATE_PATH = "panel-state.json";
 const LOG_CAP = 2000;
+const SUGGESTION_CAP = 1000;
 
 function emptyState(): PanelState {
-  return { verified: {}, dndApplied: {}, log: [], tasks: [] };
+  return { verified: {}, dndApplied: {}, log: [], tasks: [], suggestions: [] };
+}
+
+function normalizeSuggestion(raw: unknown): AgentSuggestion | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Partial<AgentSuggestion>;
+  if (typeof s.id !== "string" || typeof s.locationId !== "string" || typeof s.title !== "string") return null;
+  const status = SUGGESTION_STATUSES.includes(s.status as SuggestionStatus)
+    ? (s.status as SuggestionStatus)
+    : "nova";
+  const createdAt = typeof s.createdAt === "string" ? s.createdAt : new Date(0).toISOString();
+  return {
+    id: s.id,
+    locationId: s.locationId,
+    slug: typeof s.slug === "string" ? s.slug : "",
+    agent: typeof s.agent === "string" && s.agent ? s.agent.slice(0, 60) : "Agente",
+    title: s.title,
+    why: typeof s.why === "string" ? s.why : "",
+    planMd: typeof s.planMd === "string" ? s.planMd : "",
+    prompt: typeof s.prompt === "string" ? s.prompt : "",
+    status,
+    createdAt,
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : createdAt,
+  };
 }
 
 function normalizeTask(raw: unknown): PanelTask | null {
@@ -167,6 +230,9 @@ function normalize(raw: unknown): PanelState {
     if (Array.isArray(o.tasks)) {
       s.tasks = o.tasks.map(normalizeTask).filter((t): t is PanelTask => t !== null);
     }
+    if (Array.isArray(o.suggestions)) {
+      s.suggestions = o.suggestions.map(normalizeSuggestion).filter((x): x is AgentSuggestion => x !== null);
+    }
     if (typeof o.tasksSeededAt === "string") s.tasksSeededAt = o.tasksSeededAt;
     if (typeof o._nonce === "string") s._nonce = o._nonce;
   }
@@ -179,6 +245,19 @@ export function makeTask(partial: Omit<PanelTask, "id" | "createdAt" | "status">
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
     createdAt: new Date().toISOString(),
     status: "open",
+  };
+}
+
+export function makeSuggestion(
+  partial: Omit<AgentSuggestion, "id" | "createdAt" | "updatedAt" | "status">,
+): AgentSuggestion {
+  const now = new Date().toISOString();
+  return {
+    ...partial,
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    createdAt: now,
+    updatedAt: now,
+    status: "nova",
   };
 }
 
@@ -229,6 +308,7 @@ export async function mutateState(fn: (s: PanelState) => void): Promise<PanelSta
     const working = normalize(JSON.parse(JSON.stringify(last)));
     fn(working);
     if (working.log.length > LOG_CAP) working.log = working.log.slice(-LOG_CAP);
+    if (working.suggestions.length > SUGGESTION_CAP) working.suggestions = working.suggestions.slice(-SUGGESTION_CAP);
     const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     await writeRemote(working, nonce);
     const back = await readRemote();

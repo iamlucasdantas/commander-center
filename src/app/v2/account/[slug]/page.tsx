@@ -14,6 +14,7 @@ import { getState, stateConfigured } from "@/lib/state";
 import { groupLogEntries } from "@/lib/v2log";
 import LeadList from "@/components/LeadList";
 import GroupedLog from "@/components/v2/GroupedLog";
+import SuggestionsSection from "@/components/SuggestionsSection";
 import { Delta, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
@@ -146,6 +147,11 @@ export default async function V2AccountPage({
   const accountLog = tab === "log" && stateConfigured()
     ? (await getState(0)).log.filter((e) => e.slug === slug)
     : [];
+  // Sugestões dos agentes deste cliente (2026-11-26): PRIMEIRO bloco
+  // da página, acima das abas e dos KPIs, em qualquer aba.
+  const suggestions = stateConfigured()
+    ? (await getState(0)).suggestions.filter((e) => e.slug === slug)
+    : [];
 
   return (
     <div>
@@ -175,6 +181,8 @@ export default async function V2AccountPage({
         <span style={{ color: "#B7A69B" }}>{h.reason}</span>
         <p style={{ width: "100%", margin: "2px 0 0", fontSize: 15, lineHeight: 1.6, color: "#FCE3D4" }}>{diagnosis}</p>
       </div>
+
+      <SuggestionsSection initial={suggestions} />
 
       <nav className="v2-tabs" aria-label="Account sections">
         {TABS.map((t) => (
