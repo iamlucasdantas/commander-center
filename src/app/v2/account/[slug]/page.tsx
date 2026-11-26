@@ -9,7 +9,7 @@ import {
 import { money } from "@/lib/insights";
 import { SERVICE_CONFIG } from "@/lib/services";
 import { getAnalytics } from "@/lib/analytics";
-import { fetchAccountDetail, type AccountDetail } from "@/lib/hl";
+import { fetchAccountDetail, type AccountDetail, type CallSummary } from "@/lib/hl";
 import { getState, stateConfigured } from "@/lib/state";
 import { groupLogEntries } from "@/lib/v2log";
 import LeadList from "@/components/LeadList";
@@ -134,10 +134,12 @@ export default async function V2AccountPage({
   });
 
   // Dados pesados só são buscados na aba que os usa (a página abre
-  // rápido e o cache de 5 minutos da coleta é compartilhado).
+  // rápido e o cache de 5 minutos da coleta é compartilhado). A
+  // Overview também busca quando a conta tem bloco de ligações
+  // (showCalls): é de lá que sai o resumo de chamadas do Voice AI.
   let detail: AccountDetail | null = null;
   let detailFailed = false;
-  if (tab === "contacts") {
+  if (tab === "contacts" || (tab === "overview" && cfg?.showCalls)) {
     try {
       detail = await fetchAccountDetail(a);
     } catch {
@@ -198,7 +200,7 @@ export default async function V2AccountPage({
       </nav>
 
       {tab === "overview" && (
-        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} repLive={Boolean(rep && !rep.error)} />
+        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} repLive={Boolean(rep && !rep.error)} calls={detail?.calls ?? null} />
       )}
 
       {tab === "contacts" && (
@@ -255,13 +257,14 @@ export default async function V2AccountPage({
 // ------------------------------------------------------------- Overview
 
 function OverviewTab({
-  slug, d, snap, stripeLive, repLive,
+  slug, d, snap, stripeLive, repLive, calls,
 }: {
   slug: string;
   d: Awaited<ReturnType<typeof fetchV2Account>>;
   snap?: import("@/lib/analytics").SiteSnapshot;
   stripeLive: boolean;
   repLive: boolean;
+  calls: CallSummary | null;
 }) {
   const a = ACCOUNTS.find((x) => x.slug === slug)!;
   const cfg = SERVICE_CONFIG[slug];
@@ -297,12 +300,12 @@ function OverviewTab({
         <div className="v2-connect" title="Not connected: the conversations messages endpoint answers 401 with the current key scopes.">
           <div className="label">Speed to lead</div>
           <div className="big">CONNECT</div>
-          <p>Needs the messages scope on this account&apos;s HighLevel key.</p>
+          <p>{cfg?.speedToLeadNote ?? "Needs the messages scope on this account's HighLevel key."}</p>
         </div>
         <div className="v2-connect" title="Not connected: call detail needs the same messages scope; the conversations endpoint answers 401 today.">
           <div className="label">Missed calls</div>
           <div className="big">CONNECT</div>
-          <p>Needs the call detail scope on this account&apos;s HighLevel key.</p>
+          <p>{cfg?.missedCallsNote ?? "Needs the call detail scope on this account's HighLevel key."}</p>
         </div>
         <div className="card" title="Source: HighLevel opportunities, open.">
           <div className="label">Open pipeline</div>
@@ -320,6 +323,42 @@ function OverviewTab({
           <div className="hint">kept out of the metrics</div>
         </div>
       </div>
+
+      {cfg?.showCalls && (
+        <>
+          <h2>Voice AI{cfg.callAgent ? ` · ${cfg.callAgent}` : ""}</h2>
+          <div className="card" title="Source: HighLevel conversations, recent window (100 most recent merged with the 100 most recent phone conversations). Same count as the contracted service block on the current version's account page.">
+            {calls ? (
+              <div className="kpis" style={{ marginTop: 4 }}>
+                <div>
+                  <div className="label">Call conversations</div>
+                  <div className="value">{calls.callConversations}</div>
+                  <div className="hint">of {calls.windowSize} conversations in the window</div>
+                </div>
+                <div>
+                  <div className="label">Inbound / outbound</div>
+                  <div className="value">{calls.inbound} / {calls.outbound}</div>
+                  <div className="hint">by the last message direction</div>
+                </div>
+                <div>
+                  <div className="label">Active · 7 days</div>
+                  <div className="value">{calls.activity7d}</div>
+                  <div className="hint">{calls.activity30d} active in 30 days</div>
+                </div>
+                <div>
+                  <div className="label">Last activity was the call</div>
+                  <div className="value">{calls.lastWasCall}</div>
+                  <div className="hint">the rest continued by message</div>
+                </div>
+              </div>
+            ) : (
+              <p style={{ fontSize: 14, color: "#B7A69B" }}>
+                The conversation search did not answer in this load, so the call count is not shown.
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
       <h2>Do next</h2>
       <div className="card">

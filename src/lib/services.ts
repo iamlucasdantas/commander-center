@@ -33,6 +33,14 @@ export interface ServiceConfig {
   note?: string;
   /** O que ainda não dá para medir, com a causa exata. */
   pendencies: string[];
+  /** Motivo exato da etapa Booked do funil quando os agendamentos
+      NÃO vivem no HighLevel desta conta (sobrepõe o texto padrão de
+      "CONNECT por falta de escopo de calendários"). */
+  bookedNote?: string;
+  /** Motivo exato no card "Speed to lead" quando difere do padrão. */
+  speedToLeadNote?: string;
+  /** Motivo exato no card "Missed calls" quando difere do padrão. */
+  missedCallsNote?: string;
 }
 
 const PEND_MESSAGES =
@@ -47,13 +55,29 @@ const PEND_STRIPE =
   "MRR is not in the panel yet: Stripe is connected outside the panel; bringing subscriptions and MRR in is a registered next step.";
 
 export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
+  // Pendências da The Bar RE-MEDIDAS ao vivo em 2026-11-26, já com a
+  // chave unificada "Commander Center" (todos os escopos): o quadro
+  // mudou em relação à sonda de 2026-11-22. Calendários e campanhas
+  // agora respondem; mensagens seguem 401, mas por HIPAA, não por
+  // escopo. Agendamentos reais não vivem no HighLevel (Aesthetic
+  // Record) e o módulo Campaigns está vazio nesta location.
   "the-bar-aesthetics": {
     title: "Voice AI & leads",
     kpiLabel: "Main KPI: new leads",
     showCalls: true,
     callAgent: "Chloe, the Voice AI agent",
     note: "Full service: HighLevel, WordPress site, Voice AI, Meta Ads, SEO, blog and email. Phone is a top lead source here (source \"Call\" leads the recent contacts).",
-    pendencies: [PEND_MESSAGES, PEND_CALENDARS, PEND_CAMPAIGNS],
+    pendencies: [
+      "Call duration and the AI vs human split are not measurable: this location is a HIPAA-compliant account, and HighLevel blocks the conversation messages API for it (401 \"Can not fetch messages from HIPAA compliant account\"), whatever scopes the key has. Speed to lead and per-call detail sit behind the same wall.",
+      "Booked appointments are not in HighLevel for this client: bookings happen in Aesthetic Record. The calendars scope works now, but in the last 12 months the HighLevel calendars hold only 12 test events (May–Jun 2026) and Chloe's calendar holds none, so the panel shows no booked number instead of a misleading one.",
+      "Email campaigns have no number to show: the campaigns endpoint answers now, but this location has zero campaigns in the module (0 draft, 0 published), so there is no campaign metric to display.",
+    ],
+    bookedNote:
+      "Not booked in HighLevel: this client books in Aesthetic Record. The HighLevel calendars answer now, but hold only test events (12 in 12 months, no real client bookings), so nothing is shown instead of a misleading number.",
+    speedToLeadNote:
+      "Not measurable on this account: the messages API is blocked for HIPAA-compliant locations (401), so the first-reply time cannot be computed, whatever scopes the key has.",
+    missedCallsNote:
+      "Call conversations are counted in the Voice AI block. Which of them were missed needs the per-call detail behind the messages API, which HighLevel blocks for HIPAA-compliant locations (401).",
   },
   "corazon-latino": {
     title: "Reputation management",

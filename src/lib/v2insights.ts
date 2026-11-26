@@ -11,6 +11,7 @@ import { money, moneyShort, pctChange } from "./insights";
 import { fmtAge, type V2AccountData } from "./v2data";
 import type { Account } from "./accounts";
 import type { SiteSnapshot } from "./analytics";
+import { SERVICE_CONFIG } from "./services";
 
 export interface V2Data {
   a: Account;
@@ -401,9 +402,14 @@ export function buildFunnel(d: V2AccountData, snap?: SiteSnapshot | null): Funne
       value: null,
       display: "CONNECT",
       sub: null,
-      source: "Not connected: appointments need the calendars scope, which this account's HighLevel key does not have.",
+      // Contas cujos agendamentos NÃO vivem no HighLevel (ex.: The
+      // Bar, que agenda no Aesthetic Record) mostram o motivo real
+      // gravado em services.ts, não o texto de falta de escopo.
+      source: SERVICE_CONFIG[d.slug]?.bookedNote
+        ?? "Not connected: appointments need the calendars scope, which this account's HighLevel key does not have.",
       convFromPrev: null,
-      missing: "Needs the calendars scope on this account's HighLevel key. Booked jobs are the north-star metric of the spec; nothing is estimated here.",
+      missing: SERVICE_CONFIG[d.slug]?.bookedNote
+        ?? "Needs the calendars scope on this account's HighLevel key. Booked jobs are the north-star metric of the spec; nothing is estimated here.",
     },
     {
       key: "won", label: "Won",
