@@ -8,12 +8,13 @@
 // "This account's key has no delete/write permission yet", sem fingir
 // sucesso.
 import type { Account } from "./accounts";
+import { getPitToken } from "./pit";
 
 const BASE = "https://services.leadconnectorhq.com";
 
-export function accountPit(a: Account): string {
+export async function accountPit(a: Account): Promise<string> {
   if (!a.pitEnv) throw new Error("Account has no credential variable");
-  const pit = process.env[a.pitEnv];
+  const pit = await getPitToken(a);
   if (!pit) throw new Error("Account token is not configured");
   return pit;
 }

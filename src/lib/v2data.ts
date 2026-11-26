@@ -18,6 +18,7 @@
 //     2026-11-22, e com a IDADE da espera (lastMessageDate);
 //   - receita ganha (won) por mudança de status nos últimos 30 dias.
 import { hasToken, type Account } from "./accounts";
+import { getPitToken } from "./pit";
 import {
   classifyWithMarks, isGoneContact, loadMarks,
   type ContactMarks, type HLContact,
@@ -196,7 +197,7 @@ function emptyData(slug: string): V2AccountData {
 export async function fetchV2Account(a: Account): Promise<V2AccountData> {
   const d = emptyData(a.slug);
   if (!a.locationId || !a.pitEnv) return d;
-  const pit = process.env[a.pitEnv];
+  const pit = await getPitToken(a);
   if (!pit) return d;
 
   try {

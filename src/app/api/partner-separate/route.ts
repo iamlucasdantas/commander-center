@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   let pit: string;
   try {
-    pit = accountPit(a);
+    pit = await accountPit(a);
   } catch {
     return NextResponse.json({ ok: false, error: "Account token is not configured" }, { status: 400 });
   }
