@@ -10,6 +10,11 @@ import type { Account } from "./accounts";
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { token: string; at: number }>();
 
+/** True when a token resolves for the account (Supabase first, env fallback). Never exposes the value. */
+export async function hasResolvedToken(a: Account): Promise<boolean> {
+  return Boolean(await getPitToken(a));
+}
+
 export async function getPitToken(a: Account): Promise<string | undefined> {
   const fallback = a.pitEnv ? process.env[a.pitEnv] : undefined;
   const url = process.env.SUPABASE_URL;

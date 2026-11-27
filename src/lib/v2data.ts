@@ -17,8 +17,8 @@
 //     payload; só de leads verificados, como manda a regra de
 //     2026-11-22, e com a IDADE da espera (lastMessageDate);
 //   - receita ganha (won) por mudança de status nos últimos 30 dias.
-import { hasToken, type Account } from "./accounts";
-import { getPitToken } from "./pit";
+import { type Account } from "./accounts";
+import { getPitToken, hasResolvedToken } from "./pit";
 import {
   classifyWithMarks, isGoneContact, loadMarks,
   type ContactMarks, type HLContact,
@@ -368,9 +368,11 @@ export async function fetchV2Account(a: Account): Promise<V2AccountData> {
   }
 }
 
-/** Todas as contas conectáveis com token; devolve só as que coletaram. */
+/** Todas as contas conectáveis com token resolvido (Supabase ou env); devolve só as que coletaram. */
 export async function fetchAllV2(accounts: Account[]): Promise<V2AccountData[]> {
-  const targets = accounts.filter((a) => a.sourceStatus === "hl-location" && hasToken(a));
+  const candidates = accounts.filter((a) => a.sourceStatus === "hl-location" && a.locationId);
+  const flags = await Promise.all(candidates.map((a) => hasResolvedToken(a)));
+  const targets = candidates.filter((_, i) => flags[i]);
   const out = await Promise.all(targets.map((a) => fetchV2Account(a)));
   return out.filter((d) => d.ok);
 }

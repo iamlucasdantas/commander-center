@@ -68,7 +68,7 @@ export const ACCOUNTS: Account[] = [
   { slug: "qc-electric", name: "Quad Cities Electric (com HVAC)", kind: "projeto", locationId: "fqVlJs3KCTylR7aYLN1I", pitEnv: "HL_PIT_QC_ELECTRIC", site: "https://quadcitieselectrician.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "qc-landscaping", name: "Quad Cities Landscaping (com Tree Service)", kind: "projeto", locationId: "7vzIQSOlgTHk4KKo1E6L", pitEnv: "HL_PIT_QC_LANDSCAPING", site: "https://quadcitieslawncare.com", sourceStatus: "hl-location", inNotion: true, inWorkDrive: true },
   { slug: "clientes-nos-eua", name: "Clientes nos EUA", kind: "projeto", locationId: "daPTfU85p2gL1ha7tyPK", pitEnv: "HL_PIT_CLIENTES_NOS_EUA", site: null, sourceStatus: "hl-location", inNotion: true, inWorkDrive: true, note: "Voice agents program (Juscivan)" },
-  { slug: "wrexham-brasil", name: "Wrexham Brasil", kind: "projeto", locationId: null, pitEnv: null, site: null, sourceStatus: "mapear", inNotion: true, inWorkDrive: false },
+  { slug: "wrexham-brasil", name: "Wrexham Brasil", kind: "projeto", locationId: "6n07kF8y2Fza8bk8oc7F", pitEnv: null, site: "https://www.wrexham.com.br", sourceStatus: "hl-location", inNotion: true, inWorkDrive: false, note: "Token Commander Center só no Supabase (public.credenciais), sem env var; WhatsApp do projeto via Wazzy no +1 563 396 6762" },
   { slug: "muscatine-tree-service", name: "Muscatine Tree Service", kind: "projeto", locationId: "SFuOaZw2occIPJjkI7bA", pitEnv: "HL_PIT_MUSCATINE_TREE_SERVICE", site: null, sourceStatus: "hl-location", inNotion: false, inWorkDrive: false },
 
   // ===== Potenciais, fora do MVP =====

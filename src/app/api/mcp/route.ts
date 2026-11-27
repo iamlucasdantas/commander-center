@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { ACCOUNTS, hasToken, notConnectedReason } from "@/lib/accounts";
+import { ACCOUNTS, notConnectedReason } from "@/lib/accounts";
+import { hasResolvedToken } from "@/lib/pit";
 import { SERVICE_CONFIG } from "@/lib/services";
 import { effectivePriority, getState, makeLogEntry, makeTask, mutateState, stateConfigured, type PanelTask } from "@/lib/state";
 import { getAnalytics, ingestAnalytics } from "@/lib/analytics";
@@ -164,22 +165,25 @@ async function callTool(name: string, args: Json): Promise<unknown> {
   switch (name) {
     case "panel_status": {
       const analytics = await getAnalytics();
-      return ACCOUNTS.map((a) => {
-        const cfg = SERVICE_CONFIG[a.slug];
-        const rep = analytics.reputation?.[a.slug];
-        return {
-          slug: a.slug,
-          name: a.name,
-          kind: a.kind,
-          service: cfg?.title ?? null,
-          mainKpi: cfg?.kpiLabel ?? null,
-          connected: a.sourceStatus === "hl-location" && hasToken(a),
-          status: a.sourceStatus === "hl-location" && hasToken(a) ? "connected" : notConnectedReason(a),
-          site: a.site,
-          googleReviews: rep ? reputationLine(rep) : null,
-          pendencies: cfg?.pendencies ?? [],
-        };
-      });
+      return Promise.all(
+        ACCOUNTS.map(async (a) => {
+          const cfg = SERVICE_CONFIG[a.slug];
+          const rep = analytics.reputation?.[a.slug];
+          const connected = a.sourceStatus === "hl-location" && (await hasResolvedToken(a));
+          return {
+            slug: a.slug,
+            name: a.name,
+            kind: a.kind,
+            service: cfg?.title ?? null,
+            mainKpi: cfg?.kpiLabel ?? null,
+            connected,
+            status: connected ? "connected" : notConnectedReason(a),
+            site: a.site,
+            googleReviews: rep ? reputationLine(rep) : null,
+            pendencies: cfg?.pendencies ?? [],
+          };
+        }),
+      );
     }
     case "account_summary": {
       const slug = str(args.slug, 80) ?? "";
@@ -188,7 +192,7 @@ async function callTool(name: string, args: Json): Promise<unknown> {
       const analytics = await getAnalytics();
       const snap = analytics.sites[slug];
       const rep = analytics.reputation?.[slug];
-      if (a.sourceStatus !== "hl-location" || !hasToken(a)) {
+      if (a.sourceStatus !== "hl-location" || !(await hasResolvedToken(a))) {
         return { slug, name: a.name, status: notConnectedReason(a), googleReviews: rep ?? null, website: snap ?? null };
       }
       const d = await fetchV2Account(a);
