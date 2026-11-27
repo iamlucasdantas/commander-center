@@ -1,9 +1,12 @@
 /* Commander Center 2.0 (/v2): chrome e componentes próprios.
-   Etapa 4 (2026-11-24): abas da conta, funil, Do next, consultas. */
+   Etapa 4 (2026-11-24): abas da conta, funil, Do next, consultas.
    Arquivo separado de propósito: o globals.css é da versão atual e
    não muda. Aqui só entram classes prefixadas v2-, reaproveitando a
    identidade Magnetic Funnels (fundo #0D0D0D, chama #F0772E → #C0240A,
-   tint #FCE3D4, Archivo Black + Poppins, já carregados no layout raiz). */
+   tint #FCE3D4, Archivo Black + Poppins, já carregados no layout raiz).
+   Correção 2026-11-27: o comentário original fechava cedo demais e o
+   texto solto engolia a regra .v2-shell (display:flex), então a
+   sidebar empilhava em cima do conteúdo em vez de ficar em coluna. */
 
 .v2-shell { display: flex; min-height: 100vh; align-items: stretch; }
 
