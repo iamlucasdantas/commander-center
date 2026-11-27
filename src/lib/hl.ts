@@ -429,7 +429,7 @@ function scanContacts(a: Account, contacts: HLContact[], total: number, now: num
 
 export async function fetchAccountMetrics(a: Account): Promise<AccountMetrics> {
   const empty = emptyMetrics(a.slug);
-  if (!a.locationId || !a.pitEnv) return empty;
+  if (!a.locationId) return empty;
   const pit = await getPitToken(a);
   if (!pit) return empty;
 
@@ -630,7 +630,7 @@ function previewText(body?: string): string | null {
  * números zerados.
  */
 export async function fetchAccountDetail(a: Account): Promise<AccountDetail> {
-  if (!a.locationId || !a.pitEnv) throw new Error("Account has no HighLevel location");
+  if (!a.locationId) throw new Error("Account has no HighLevel location");
   const pit = await getPitToken(a);
   if (!pit) throw new Error("Account token is not configured");
 
@@ -950,7 +950,7 @@ export function contactRecord(c: HLContact): ContactRecord {
 
 /** Contatos da location lidos agora, sem cache. Lança erro se a busca falhar. */
 export async function fetchContactsLive(a: Account): Promise<HLContact[]> {
-  if (!a.locationId || !a.pitEnv) throw new Error("Account has no HighLevel location");
+  if (!a.locationId) throw new Error("Account has no HighLevel location");
   const pit = await getPitToken(a);
   if (!pit) throw new Error("Account token is not configured");
   const { contacts } = await fetchContacts(a, pit, Date.now(), true);
@@ -1036,7 +1036,7 @@ async function fetchAllContacts(a: Account, pit: string): Promise<{ contacts: HL
 }
 
 export async function verifyAccountLeads(a: Account): Promise<VerifyResult> {
-  if (!a.locationId || !a.pitEnv) throw new Error("Account has no HighLevel location");
+  if (!a.locationId) throw new Error("Account has no HighLevel location");
   const pit = await getPitToken(a);
   if (!pit) throw new Error("Account token is not configured");
 

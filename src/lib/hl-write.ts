@@ -13,7 +13,6 @@ import { getPitToken } from "./pit";
 const BASE = "https://services.leadconnectorhq.com";
 
 export async function accountPit(a: Account): Promise<string> {
-  if (!a.pitEnv) throw new Error("Account has no credential variable");
   const pit = await getPitToken(a);
   if (!pit) throw new Error("Account token is not configured");
   return pit;

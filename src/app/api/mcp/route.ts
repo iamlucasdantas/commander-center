@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ACCOUNTS, notConnectedReason } from "@/lib/accounts";
-import { hasResolvedToken } from "@/lib/pit";
+import { getPitToken, hasResolvedToken } from "@/lib/pit";
 import { SERVICE_CONFIG } from "@/lib/services";
 import { effectivePriority, getState, makeLogEntry, makeTask, mutateState, stateConfigured, type PanelTask } from "@/lib/state";
 import { getAnalytics, ingestAnalytics } from "@/lib/analytics";
@@ -44,6 +44,47 @@ const TOOLS: ToolDef[] = [
     name: "account_summary",
     description: "Live summary of one account: health (Act now / Watch / Flowing), diagnosis, leads today/7d/30d, waiting conversations, open pipeline, won 30d, suggested next actions and Google reviews when collected. Reads HighLevel live (5-minute cache).",
     inputSchema: { type: "object", properties: { slug: { type: "string", description: "Account slug from panel_status" } }, required: ["slug"], additionalProperties: false },
+  },
+  {
+    name: "list_contacts",
+    description: "Read contacts of one account's HighLevel subaccount, most recent first: id, name, phone, email, tags, source, dateAdded, plus the subaccount total. Read-only. Optional query searches name, email or phone.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Account slug from panel_status" },
+        limit: { type: "number", description: "How many contacts, 1 to 50, default 20" },
+        query: { type: "string", description: "Optional search text" },
+      },
+      required: ["slug"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "list_conversations",
+    description: "Read the most recent conversations of one account's HighLevel subaccount: id, contact, unreadCount, last message date, direction, type and a short preview. A conversation whose last message is inbound and unread is waiting for a reply. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Account slug from panel_status" },
+        limit: { type: "number", description: "How many conversations, 1 to 50, default 20" },
+      },
+      required: ["slug"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "conversation_messages",
+    description: "Read the messages of one conversation of an account's HighLevel subaccount, most recent first: direction, type, date and body (truncated). Read-only. Get conversation_id from list_conversations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Account slug from panel_status" },
+        conversation_id: { type: "string", description: "Conversation id from list_conversations" },
+        limit: { type: "number", description: "How many messages, 1 to 50, default 20" },
+      },
+      required: ["slug", "conversation_id"],
+      additionalProperties: false,
+    },
   },
   {
     name: "list_tasks",
@@ -161,6 +202,35 @@ function str(v: unknown, max: number): string | undefined {
   return t ? t.slice(0, max) : undefined;
 }
 
+function clampNum(v: unknown, def: number, min: number, max: number): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : def;
+  return Math.min(max, Math.max(min, n));
+}
+
+const HL_BASE = "https://services.leadconnectorhq.com";
+
+async function hlAgentGet(path: string, pit: string): Promise<unknown> {
+  const res = await fetch(`${HL_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${pit}`, Version: "2021-07-28", Accept: "application/json" },
+    signal: AbortSignal.timeout(15_000),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`HighLevel ${res.status}`);
+  return res.json();
+}
+
+/** Gate das ferramentas de leitura do CRM: conta conectada e token resolvido (Supabase ou env). */
+async function gateAccount(slug: string): Promise<{ a: (typeof ACCOUNTS)[number]; pit: string } | { error: unknown }> {
+  const a = ACCOUNTS.find((x) => x.slug === slug);
+  if (!a) return { error: { error: "Unknown account slug" } };
+  if (a.sourceStatus !== "hl-location" || !a.locationId) {
+    return { error: { slug, name: a.name, status: notConnectedReason(a) } };
+  }
+  const pit = await getPitToken(a);
+  if (!pit) return { error: { slug, name: a.name, status: notConnectedReason(a) } };
+  return { a, pit };
+}
+
 async function callTool(name: string, args: Json): Promise<unknown> {
   switch (name) {
     case "panel_status": {
@@ -214,6 +284,84 @@ async function callTool(name: string, args: Json): Promise<unknown> {
         googleReviews: rep ?? null,
         pendencies: SERVICE_CONFIG[slug]?.pendencies ?? [],
         fetchedAt: new Date(d.fetchedAt).toISOString(),
+      };
+    }
+    case "list_contacts": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const limit = clampNum(args.limit, 20, 1, 50);
+      const query = str(args.query, 120);
+      const path =
+        `/contacts/?locationId=${g.a.locationId}&limit=${limit}` +
+        (query ? `&query=${encodeURIComponent(query)}` : "");
+      const res = (await hlAgentGet(path, g.pit)) as {
+        contacts?: Record<string, unknown>[];
+        meta?: { total?: number };
+      };
+      return {
+        slug: g.a.slug,
+        name: g.a.name,
+        total: res.meta?.total ?? null,
+        contacts: (res.contacts ?? []).map((c) => ({
+          id: c.id ?? null,
+          name: c.contactName ?? ([c.firstName, c.lastName].filter(Boolean).join(" ") || null),
+          phone: c.phone ?? null,
+          email: c.email ?? null,
+          tags: c.tags ?? [],
+          source: c.source ?? null,
+          dateAdded: c.dateAdded ?? null,
+        })),
+      };
+    }
+    case "list_conversations": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const limit = clampNum(args.limit, 20, 1, 50);
+      const res = (await hlAgentGet(`/conversations/search?locationId=${g.a.locationId}&limit=${limit}`, g.pit)) as {
+        conversations?: Record<string, unknown>[];
+        total?: number;
+      };
+      return {
+        slug: g.a.slug,
+        name: g.a.name,
+        total: res.total ?? null,
+        conversations: (res.conversations ?? []).map((cv) => ({
+          id: cv.id ?? null,
+          contactId: cv.contactId ?? null,
+          contactName: cv.contactName ?? null,
+          contactPhone: cv.phone ?? null,
+          type: cv.type ?? null,
+          unreadCount: cv.unreadCount ?? 0,
+          lastMessageDate: cv.lastMessageDate ?? null,
+          lastMessageDirection: cv.lastMessageDirection ?? null,
+          lastMessageType: cv.lastMessageType ?? null,
+          lastMessageBody: typeof cv.lastMessageBody === "string" ? cv.lastMessageBody.slice(0, 200) : null,
+        })),
+      };
+    }
+    case "conversation_messages": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const conversationId = str(args.conversation_id, 80) ?? "";
+      if (!conversationId) return { error: "conversation_id is required" };
+      const limit = clampNum(args.limit, 20, 1, 50);
+      const res = (await hlAgentGet(`/conversations/${encodeURIComponent(conversationId)}/messages?limit=${limit}`, g.pit)) as {
+        messages?: Record<string, unknown>[] | { messages?: Record<string, unknown>[] };
+      };
+      const raw = res.messages;
+      const arr = Array.isArray(raw) ? raw : (raw?.messages ?? []);
+      return {
+        slug: g.a.slug,
+        conversationId,
+        messages: arr.map((m) => ({
+          id: m.id ?? null,
+          direction: m.direction ?? null,
+          type: m.type ?? null,
+          status: m.status ?? null,
+          dateAdded: m.dateAdded ?? null,
+          contactId: m.contactId ?? null,
+          body: typeof m.body === "string" ? m.body.slice(0, 500) : null,
+        })),
       };
     }
     case "list_tasks": {

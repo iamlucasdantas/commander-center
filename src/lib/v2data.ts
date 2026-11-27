@@ -201,7 +201,7 @@ function emptyData(slug: string): V2AccountData {
 
 export async function fetchV2Account(a: Account): Promise<V2AccountData> {
   const d = emptyData(a.slug);
-  if (!a.locationId || !a.pitEnv) return d;
+  if (!a.locationId) return d;
   const pit = await getPitToken(a);
   if (!pit) return d;
 
