@@ -91,8 +91,13 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
   "sumthin-different": {
     title: "Appointments",
     kpiLabel: "Main KPI: appointments booked",
-    showAppointments: true,
-    note: "Verified live on 2026-11-27 with the unified Commander Center key: the calendars scope answers and the location holds 6 active calendars (one per barber, plus the shop and AI calendars), but they hold zero appointments in the last 60 days and the next 60, so the shop's real bookings are not flowing through HighLevel today. The Booked stage shows the live count from the calendars. Site traffic is in the Website block below (GA4 + Search Console).",
+    note: "Verified live on 2026-11-27 with the unified Commander Center key: the calendars scope answers and the location holds 6 active calendars, but they hold only 1 test event in 12 months. The shop's real bookings run in its external system (the myCRMSIM connection) and the appointment reminders flow through HighLevel conversations from there. Site traffic is in the Website block below (GA4 + Search Console).",
+    bookedNote:
+      "Not booked in HighLevel: this shop books in its external booking system (the myCRMSIM connection); appointment reminders reach clients through HighLevel conversations from there. The HighLevel calendars answer with the unified key, but hold only 1 test event in 12 months across 6 active calendars, so nothing is shown instead of a misleading zero.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
     pendencies: [],
   },
   "pee-wees-soul-food": {

@@ -397,7 +397,7 @@ export function buildFunnel(d: V2AccountData, snap?: SiteSnapshot | null): Funne
       convFromPrev: convRate(responded, contacts28),
       missing: null,
     },
-    ...(d.appointments ? [{
+    ...(d.appointments && !SERVICE_CONFIG[d.slug]?.bookedNote ? [{
       key: "booked", label: "Booked",
       value: d.appointments.past30,
       display: d.appointments.past30.toLocaleString("en-US"),
