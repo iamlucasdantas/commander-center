@@ -123,7 +123,13 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
     kpiLabel: "Main KPI: closed rentals (won opportunities)",
     showWon: true,
     stagesPipeline: "ALUGUER",
-    note: "The ALUGUER pipeline stages ARE the lead score bands: Prata (up to 50), Ouro (51 to 89), Diamante (90 to 100), then contact attempts, meeting and Handoff.",
+    note: "The ALUGUER pipeline stages ARE the lead score bands: Prata (up to 50), Ouro (51 to 89), Diamante (90 to 100), then contact attempts, meeting and Handoff. The business also runs FORMAÇÃO and VENDA pipelines (three paths: rental, training, sales). Measured live on 2026-11-27: 82 open opportunities (21,985 in open value as the panel formats it), 71 of them idle for 14+ days; 4 won in the loaded window and none in the last 30 days, so the main KPI is at zero this month while new leads keep arriving (8 verified contacts in 28 days).",
+    bookedNote:
+      "For this client the booking step is the meeting, and it lives in the ALUGUER pipeline stages (Reunião agendada, Reunião realizada), shown in the contracted service block on this page. The funnel's generic Booked stage does not apply to a rentals pipeline, so no separate booked number is shown.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
     pendencies: [],
   },
   "dr-josiel-peixoto": {

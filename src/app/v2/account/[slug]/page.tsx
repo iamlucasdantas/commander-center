@@ -139,7 +139,7 @@ export default async function V2AccountPage({
   // (showCalls): é de lá que sai o resumo de chamadas do Voice AI.
   let detail: AccountDetail | null = null;
   let detailFailed = false;
-  if (tab === "contacts" || (tab === "overview" && cfg?.showCalls)) {
+  if (tab === "contacts" || (tab === "overview" && (cfg?.showCalls || cfg?.showWon || cfg?.stagesPipeline))) {
     try {
       detail = await fetchAccountDetail(a);
     } catch {
@@ -200,7 +200,7 @@ export default async function V2AccountPage({
       </nav>
 
       {tab === "overview" && (
-        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} repLive={Boolean(rep && !rep.error)} calls={detail?.calls ?? null} />
+        <OverviewTab slug={slug} d={d} snap={snap} stripeLive={Boolean(analytics.stripe?.accounts.length)} repLive={Boolean(rep && !rep.error)} calls={detail?.calls ?? null} detail={detail} />
       )}
 
       {tab === "contacts" && (
@@ -257,7 +257,7 @@ export default async function V2AccountPage({
 // ------------------------------------------------------------- Overview
 
 function OverviewTab({
-  slug, d, snap, stripeLive, repLive, calls,
+  slug, d, snap, stripeLive, repLive, calls, detail,
 }: {
   slug: string;
   d: Awaited<ReturnType<typeof fetchV2Account>>;
@@ -265,6 +265,7 @@ function OverviewTab({
   stripeLive: boolean;
   repLive: boolean;
   calls: CallSummary | null;
+  detail: AccountDetail | null;
 }) {
   const a = ACCOUNTS.find((x) => x.slug === slug)!;
   const cfg = SERVICE_CONFIG[slug];
@@ -436,6 +437,60 @@ function OverviewTab({
               )}
             </div>
           )}
+        </>
+      )}
+
+      {(cfg?.showWon || cfg?.stagesPipeline) && detail && (
+        <>
+          <h2>Contracted service · {cfg.title}</h2>
+          <div className="card" title="Source: HighLevel opportunities read by the panel (same loaded window as the current version's account page).">
+            <div className="label">{cfg.kpiLabel}</div>
+            {cfg.note && <p className="hint" style={{ marginTop: 8, maxWidth: 720 }}>{cfg.note}</p>}
+            {cfg.showWon && detail.won && (
+              <div className="kpis" style={{ marginTop: 14 }}>
+                <div>
+                  <div className="label">Won · loaded window</div>
+                  <div className="value">{detail.won.count}</div>
+                  <div className="hint">{money(detail.won.value)} total value</div>
+                </div>
+                <div>
+                  <div className="label">Won · last 30 days</div>
+                  <div className="value">{detail.won.last30Count}</div>
+                  <div className="hint">{money(detail.won.last30Value)}</div>
+                </div>
+                <div>
+                  <div className="label">Lost · loaded window</div>
+                  <div className="value">{detail.won.lostCount}</div>
+                  <div className="hint">in the same window</div>
+                </div>
+              </div>
+            )}
+            {(() => {
+              const group = cfg.stagesPipeline
+                ? detail.stageGroups.find((g) => g.pipeline.toLowerCase().includes(cfg.stagesPipeline!.toLowerCase()))
+                : undefined;
+              if (!group || group.stages.length === 0) return null;
+              const maxStage = Math.max(1, ...group.stages.map((s) => s.count));
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <div className="label">Open by stage · {group.pipeline}</div>
+                  <div style={{ marginTop: 6 }}>
+                    {group.stages.map((s) => (
+                      <div className="conv" key={s.name}>
+                        <span>{s.name}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                          <span className="minibar" style={{ width: 110, marginTop: 0 }}>
+                            <i style={{ width: `${Math.max(2, Math.round((s.count / maxStage) * 100))}%` }} />
+                          </span>
+                          <b>{s.count}</b>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </>
       )}
 
