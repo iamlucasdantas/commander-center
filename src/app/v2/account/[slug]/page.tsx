@@ -15,7 +15,7 @@ import { groupLogEntries } from "@/lib/v2log";
 import LeadList from "@/components/LeadList";
 import GroupedLog from "@/components/v2/GroupedLog";
 import SuggestionsSection from "@/components/SuggestionsSection";
-import { Delta, Spark, TZ } from "@/components/viz";
+import { Delta, Pie, PIE_COLORS, Spark, TZ } from "@/components/viz";
 
 export const dynamic = "force-dynamic";
 
@@ -357,6 +357,85 @@ function OverviewTab({
               </p>
             )}
           </div>
+          {calls && (calls.types !== null || calls.weekItems.length > 0) && (
+            <div className="card" style={{ marginTop: 14 }} title="Source: the post-call workflow fields recorded on each contact in HighLevel (Call Category, Reason For Call, Service of Interest, Lead Temperature, Urgent Flag), read on the most recent call conversations. Call content and duration are not read: this account is HIPAA in HighLevel and the messages API answers 401.">
+              <div style={{ display: "flex", gap: 26, flexWrap: "wrap" }}>
+                {calls.types !== null && calls.typesRead > 0 && (() => {
+                  const slices: { label: string; value: number; color?: string }[] = [
+                    ...calls.types.map((t) => ({ label: t.category, value: t.count })),
+                    ...(calls.typesRead - calls.categorized > 0
+                      ? [{ label: "Not recorded", value: calls.typesRead - calls.categorized, color: "#4A3F39" }]
+                      : []),
+                  ];
+                  const total = slices.reduce((sum, x) => sum + x.value, 0);
+                  return (
+                    <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
+                      <Pie slices={slices} centerTop={String(total)} centerBottom="calls read" />
+                      <div>
+                        <div className="label" style={{ marginBottom: 8 }}>Call types · last {calls.typesRead} calls</div>
+                        {slices.map((sl, i) => (
+                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, marginBottom: 4 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 3, background: sl.color ?? PIE_COLORS[i % PIE_COLORS.length], flex: "none" }} />
+                            <span>{sl.label}</span>
+                            <b>{sl.value}</b>
+                            <span className="hint">{total > 0 ? `${Math.round((sl.value / total) * 100)}%` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const g = agentGrade(calls);
+                  if (!g) return null;
+                  return (
+                    <div style={{ minWidth: 190 }}>
+                      <div className="label">Agent grade</div>
+                      <div className="value" style={{ fontSize: 34 }}>{g.letter} <span style={{ fontSize: 17, color: "#B7A69B" }}>· {g.score}/100</span></div>
+                      <div className="hint" style={{ maxWidth: 250, lineHeight: 1.5 }}>
+                        Triage grade: {Math.round(g.coverage * 100)}% of the calls read have a category recorded
+                        {g.reasonRate !== null ? <> and {Math.round(g.reasonRate * 100)}% of this week&apos;s calls have the reason recorded</> : null}.
+                        Call content and duration cannot be read in this HIPAA account, so the grade measures how completely each call was triaged and logged, not the conversation itself.
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              {calls.weekItems.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="label" style={{ marginBottom: 6 }}>
+                    This week on calls · {calls.weekItems.length}
+                    {(() => {
+                      const urg = calls.weekItems.filter((w) => w.urgent && !/^(no|false|none)$/i.test(w.urgent.trim())).length;
+                      const hot = calls.weekItems.filter((w) => /hot|quente/i.test(w.temperature ?? "")).length;
+                      const nocat = calls.weekItems.filter((w) => !w.category).length;
+                      const bits = [
+                        urg > 0 ? `${urg} flagged urgent` : null,
+                        hot > 0 ? `${hot} hot lead${hot === 1 ? "" : "s"}` : null,
+                        nocat > 0 ? `${nocat} without a category recorded` : null,
+                      ].filter(Boolean);
+                      return bits.length > 0 ? <span style={{ color: "#FFD97C" }}> · {bits.join(" · ")}</span> : null;
+                    })()}
+                  </div>
+                  {[...calls.weekItems].sort((x, y) => y.when - x.when).slice(0, 10).map((w, i) => (
+                    <div className="conv" key={`${w.contactName}-${i}`}>
+                      <span>
+                        <b>{w.contactName}</b>
+                        {w.category ? <span style={{ color: "#F0772E", fontWeight: 700 }}> · {w.category}</span> : null}
+                        {w.reason ? <span style={{ color: "#B7A69B" }}> · {w.reason}</span> : null}
+                        {w.service ? <span className="preview">{w.service}</span> : null}
+                      </span>
+                      <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flex: "none" }}>
+                        {w.temperature ? <span className="hint" style={{ fontWeight: 700, color: /hot|quente/i.test(w.temperature) ? "#FF6B6B" : undefined }}>{w.temperature}</span> : null}
+                        {w.urgent && !/^(no|false|none)$/i.test(w.urgent.trim()) ? <span style={{ color: "#FF6B6B", fontWeight: 800, fontSize: 12.5 }}>URGENT</span> : null}
+                        <span className="hint">{w.when > 0 ? new Date(w.when).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: TZ }) : ""}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -655,6 +734,26 @@ function WebsiteTab({
   );
 }
 
+// --------------------------------------------------------- Voice AI grade
+
+/**
+ * Nota geral do agente de voz, SÓ com o que dá pra medir sem ler a
+ * conversa: a completude da triagem gravada pelo workflow pós-ligação
+ * (categoria nas ligações lidas + motivo nas ligações da semana).
+ * Em conta HIPAA o conteúdo e a duração da ligação não são legíveis
+ * (mensagens 401), então a nota mede triagem e registro, nunca a
+ * conversa. A receita aparece ao lado da nota no painel.
+ */
+function agentGrade(calls: CallSummary): { score: number; letter: string; coverage: number; reasonRate: number | null } | null {
+  if (calls.typesRead === 0) return null;
+  const coverage = calls.categorized / calls.typesRead;
+  const wk = calls.weekItems;
+  const reasonRate = wk.length > 0 ? wk.filter((w) => w.reason).length / wk.length : null;
+  const score = Math.round(100 * (reasonRate === null ? coverage : 0.6 * coverage + 0.4 * reasonRate));
+  const letter = score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F";
+  return { score, letter, coverage, reasonRate };
+}
+
 // --------------------------------------------------------- Google reviews
 
 /**
@@ -709,6 +808,33 @@ function ReviewsCard({ rep }: { rep: import("@/lib/reputation").ReputationSnapsh
             </div>
           </div>
         </div>
+        {(() => {
+          const ratingSeries = rep.history.map((h) => h.averageRating).filter((v): v is number => v !== null && v !== undefined);
+          const replySeries = rep.history.map((h) => h.avgReplyHours).filter((v): v is number => v !== null && v !== undefined);
+          const fmtH = (v: number) => (v < 48 ? `${Math.round(v)} h` : `${(v / 24).toFixed(1)} d`);
+          if (ratingSeries.length < 2 && replySeries.length < 2) return null;
+          return (
+            <div className="kpis" style={{ marginTop: 14 }}>
+              {ratingSeries.length > 1 && (
+                <div>
+                  <div className="label">Average rating · over time</div>
+                  <Spark data={ratingSeries} w={230} h={38} />
+                  <div className="hint">{ratingSeries[0].toFixed(2)}★ → {ratingSeries[ratingSeries.length - 1].toFixed(2)}★ · {ratingSeries.length} daily snapshots</div>
+                </div>
+              )}
+              {replySeries.length > 1 && (
+                <div>
+                  <div className="label">Avg reply time · over time</div>
+                  <Spark data={replySeries} w={230} h={38} stroke="#7CC4FF" />
+                  <div className="hint">{fmtH(replySeries[0])} → {fmtH(replySeries[replySeries.length - 1])} · lower is better · {replySeries.length} daily snapshots</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+        <p className="hint" style={{ marginTop: 10 }}>
+          Review requests sent: they go out through the HighLevel review flow, and neither Google nor the HighLevel API exposes that count for this account, so it is not shown here instead of being estimated.
+        </p>
         {hasActions && (
           <p className="hint" style={{ marginTop: 10 }}>
             Profile actions, last 30 days: {rep.calls30 ?? "—"} calls · {rep.websiteClicks30 ?? "—"} website clicks · {rep.directions30 ?? "—"} direction requests.

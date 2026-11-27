@@ -54,6 +54,40 @@ export function Ring({ pct, color, center, size = 40 }: { pct: number; color: st
   );
 }
 
+/** Paleta das fatias (donut de tipos): chama da marca + apoios. */
+export const PIE_COLORS = ["#F0772E", "#EB611C", "#FFD97C", "#3DDC84", "#7CC4FF", "#C9A7FF", "#FF6B6B", "#8AD6C2"];
+
+/** Donut de fatias server-rendered (SVG puro): um arco por fatia, na
+ *  ordem dada. Fatia pode trazer a própria cor (ex.: "não registrado"). */
+export function Pie({ slices, size = 150, thickness = 21, centerTop, centerBottom }: {
+  slices: { label: string; value: number; color?: string }[];
+  size?: number; thickness?: number; centerTop?: string; centerBottom?: string;
+}) {
+  const total = slices.reduce((sum, x) => sum + x.value, 0);
+  const r = size / 2 - thickness / 2 - 2;
+  const C = 2 * Math.PI * r;
+  const c = size / 2;
+  let acc = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx={c} cy={c} r={r} fill="none" stroke="#2B2320" strokeWidth={thickness} />
+      {total > 0 && slices.map((sl, i) => {
+        const frac = sl.value / total;
+        const dash = `${Math.max(0, frac * C - 2.5)} ${C}`;
+        const off = -acc * C;
+        acc += frac;
+        return (
+          <circle key={i} cx={c} cy={c} r={r} fill="none" strokeWidth={thickness}
+            stroke={sl.color ?? PIE_COLORS[i % PIE_COLORS.length]}
+            strokeDasharray={dash} strokeDashoffset={off} transform={`rotate(-90 ${c} ${c})`} />
+        );
+      })}
+      {centerTop && <text x={c} y={c} textAnchor="middle" fontSize="19" fontWeight="800" fill="#FCE3D4">{centerTop}</text>}
+      {centerBottom && <text x={c} y={c + 15} textAnchor="middle" fontSize="9.5" fill="#B7A69B">{centerBottom}</text>}
+    </svg>
+  );
+}
+
 export const HEALTH_COLOR = { green: "#3DDC84", yellow: "#FFD97C", red: "#FF6B6B" } as const;
 
 /** Gráfico principal: área em gradiente chama (30d) + linha tracejada do
