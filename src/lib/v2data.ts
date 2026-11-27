@@ -23,6 +23,7 @@ import {
   classifyWithMarks, isGoneContact, loadMarks,
   type ContactMarks, type HLContact,
 } from "./hl";
+import { SERVICE_CONFIG } from "./services";
 
 const BASE = "https://services.leadconnectorhq.com";
 const DAY = 86_400_000;
@@ -42,6 +43,9 @@ export interface V2AccountData {
   slug: string;
   ok: boolean;
   fetchedAt: number;
+  /** Agendamentos lidos ao vivo dos calendários (só contas com
+   *  showAppointments): null = não lido nesta carga. */
+  appointments: { calendars: number; past30: number; next30: number } | null;
   totalContacts: number;
   // Contatos VERIFICADOS por período (KPI de topo do v2)
   contactsTodayV: number;
@@ -191,6 +195,7 @@ function emptyData(slug: string): V2AccountData {
     waiting: [], waitingCount: 0, waitingOldestMin: null, respondedCount: 0, conversationsWindow: 0, unreadConversations: 0,
     opportunitiesOpen: 0, opportunitiesValue: 0, idleCount: 0, idleValue: 0,
     won30Count: 0, won30Value: 0, topOpportunities: [], searchContacts: [],
+    appointments: null,
   };
 }
 
@@ -316,6 +321,39 @@ export async function fetchV2Account(a: Account): Promise<V2AccountData> {
       d.topOpportunities.sort((x, y) => y.value - x.value);
       d.topOpportunities = d.topOpportunities.slice(0, 10);
     } catch { /* idem */ }
+
+    // Agendamentos (KPI principal das contas showAppointments): lê a
+    // lista de calendários da location e conta os eventos de cada um
+    // nos últimos 30 dias e nos próximos 30, ao vivo, com a chave
+    // unificada (escopo de calendários confirmado em 2026-11-26).
+    if (SERVICE_CONFIG[a.slug]?.showAppointments) {
+      try {
+        const cals = (await withRetry(() => hlGet(`/calendars/?locationId=${a.locationId}`, pit), 2)) as {
+          calendars?: { id?: string }[];
+        };
+        const ids = (cals.calendars ?? []).map((c) => c.id).filter((x): x is string => Boolean(x)).slice(0, 10);
+        let past30 = 0;
+        let next30 = 0;
+        await Promise.all(ids.map(async (id) => {
+          for (const [from, to, isPast] of [
+            [now - 30 * DAY, now, true],
+            [now, now + 30 * DAY, false],
+          ] as const) {
+            try {
+              const ev = (await hlGet(
+                `/calendars/events?locationId=${a.locationId}&calendarId=${id}&startTime=${from}&endTime=${to}`, pit,
+              )) as { events?: { appointmentStatus?: string; status?: string }[] };
+              const valid = (ev.events ?? []).filter((e) => {
+                const st = (e.appointmentStatus ?? e.status ?? "").toLowerCase();
+                return st !== "cancelled" && st !== "canceled" && st !== "invalid";
+              }).length;
+              if (isPast) past30 += valid; else next30 += valid;
+            } catch { /* um calendário ilegível não derruba a conta */ }
+          }
+        }));
+        d.appointments = { calendars: ids.length, past30, next30 };
+      } catch { /* idem: bônus, não derruba a conta */ }
+    }
 
     return d;
   } catch {

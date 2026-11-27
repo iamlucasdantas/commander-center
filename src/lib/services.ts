@@ -27,6 +27,9 @@ export interface ServiceConfig {
   stagesPipeline?: string;
   /** Mostra ganhos/perdas (aluguéis fechados da Globalaser). */
   showWon?: boolean;
+  /** KPI = agendamentos: o painel lê os calendários do HighLevel ao
+      vivo (lista + eventos 30d) e a etapa Booked mostra o número real. */
+  showAppointments?: boolean;
   /** KPI = pedidos vindos de formulário do site (Blue Steel). */
   formKpi?: boolean;
   /** Contexto curto, exibido no bloco. */
@@ -46,7 +49,7 @@ export interface ServiceConfig {
 const PEND_MESSAGES =
   "Call duration and the AI vs human split are not measurable yet: the conversation messages endpoint answers 401 with this key's current scopes (messages scope missing).";
 const PEND_CALENDARS =
-  "Real appointments are not measurable yet: the key has no calendars scope, so booked appointments do not reach the panel.";
+  "Appointments are not verified yet for this account: where this client's bookings live has not been checked, so no booked number is shown instead of a guessed one.";
 const PEND_CAMPAIGNS =
   "Email campaigns are not measurable yet: the key has no campaigns scope.";
 const PEND_REPUTATION =
@@ -88,8 +91,9 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
   "sumthin-different": {
     title: "Appointments",
     kpiLabel: "Main KPI: appointments booked",
-    note: "Site traffic for this client is in the Website block below (GA4 + Search Console).",
-    pendencies: [PEND_CALENDARS],
+    showAppointments: true,
+    note: "Verified live on 2026-11-27 with the unified Commander Center key: the calendars scope answers and the location holds 6 active calendars (one per barber, plus the shop and AI calendars), but they hold zero appointments in the last 60 days and the next 60, so the shop's real bookings are not flowing through HighLevel today. The Booked stage shows the live count from the calendars. Site traffic is in the Website block below (GA4 + Search Console).",
+    pendencies: [],
   },
   "pee-wees-soul-food": {
     title: "Google reviews",

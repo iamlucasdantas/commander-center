@@ -397,7 +397,15 @@ export function buildFunnel(d: V2AccountData, snap?: SiteSnapshot | null): Funne
       convFromPrev: convRate(responded, contacts28),
       missing: null,
     },
-    {
+    ...(d.appointments ? [{
+      key: "booked", label: "Booked",
+      value: d.appointments.past30,
+      display: d.appointments.past30.toLocaleString("en-US"),
+      sub: `in the HighLevel calendars, last 30 days · ${d.appointments.next30} coming up`,
+      source: `Source: HighLevel calendars, read live by the panel: ${d.appointments.calendars} active calendars in this location, appointments in the last 30 days (cancelled excluded).`,
+      convFromPrev: null,
+      missing: null,
+    }] : [{
       key: "booked", label: "Booked",
       value: null,
       display: "CONNECT",
@@ -410,7 +418,7 @@ export function buildFunnel(d: V2AccountData, snap?: SiteSnapshot | null): Funne
       convFromPrev: null,
       missing: SERVICE_CONFIG[d.slug]?.bookedNote
         ?? "Needs the calendars scope on this account's HighLevel key. Booked jobs are the north-star metric of the spec; nothing is estimated here.",
-    },
+    }]),
     {
       key: "won", label: "Won",
       value: d.won30Value,
