@@ -174,8 +174,14 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
   "the-gypsy-highway": {
     title: "Website traffic",
     kpiLabel: "Main KPI: website sessions (GA4)",
-    note: "The client's Facebook Page (GypsyHighway) is tracked on the Social page. Secondary KPIs in Notion: social reach, Google reviews and the newsletter list.",
-    pendencies: [PEND_REPUTATION],
+    note: "Bar, restaurant and live music venue in Davenport, IA; contracted work is the website and events, social media, Google Business, the HighLevel subaccount and a newsletter (scope and pace still under negotiation, per Notion). The main KPI reads zero because the GA4 tag is not on the site: the property had 29,794 sessions in 2023 and none in 2026. The traffic exists and is proven by the other sources measured live on 2026-11-27: 890 Search Console clicks (18,462 impressions, average position 10.9) and, on the Google profile, 921 website clicks, 218 calls and 462 direction requests in 30 days. The fix is the SEO suggestion waiting on this page: install the GA4 tag (G-DX5VSWEMLD). Reputation: 4.5 stars, 990 reviews, 29 without a reply, average reply time 7 hours; the collector reads the 500 most recent of the 990, so the unanswered count is a floor, not the total. The client's Facebook Page (GypsyHighway) is tracked on the Social page.",
+    bookedNote:
+      "No booking calendars exist in this client's HighLevel location (checked live on 2026-11-27): a bar and music venue does not take bookings through HighLevel, so no booked number is shown.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
+    pendencies: [],
   },
   "mi-rancho": {
     title: "Website + Google",
