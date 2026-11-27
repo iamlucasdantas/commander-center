@@ -85,8 +85,14 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
   "corazon-latino": {
     title: "Reputation management",
     kpiLabel: "Main KPI: new Google reviews",
-    note: "The contracted work is review replies inside HighLevel (agents \"Corazon Latino Review Replies\" and \"Negative Reviews\"). Notion records a backlog of 222 unanswered reviews being cleared at about 10 per day.",
-    pendencies: [PEND_REPUTATION],
+    note: "The contracted work is Google presence and reputation: automatic review replies inside HighLevel (agents \"Corazon Latino Review Replies\" and \"Negative Reviews\"). Reviews are measured by the panel's Google Business Profile collector (daily snapshots), not by the HighLevel key. Measured live on 2026-11-27: 224 reviews, 4.7 stars, 160 without a reply, 64 replies in the last 30 days with an average reply time of 25.2 days, and 9 new reviews in 30 days (down 36% on the previous period). The older Notion note (backlog of 222 being cleared at about 10 per day) no longer matches the measured pace.",
+    bookedNote:
+      "Not tracked in HighLevel: this client's contracted service is reputation management (Google reviews), and reservations are not recorded in the HighLevel calendars (the calendars here are service listings, 4 of 5 inactive, and the active one holds no events in the last 180 days), so no booked number is shown.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
+    pendencies: [],
   },
   "sumthin-different": {
     title: "Appointments",
