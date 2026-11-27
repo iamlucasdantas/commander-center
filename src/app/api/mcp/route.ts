@@ -104,6 +104,7 @@ const TOOLS: ToolDef[] = [
       properties: {
         slug: { type: "string", description: "Account slug from panel_status" },
         conversation_id: { type: "string", description: "Conversation id from list_conversations" },
+        contact_id: { type: "string", description: "Optional contact id from list_contacts. Normally omit it: the tool resolves the conversation's contact on the server." },
         type: { type: "string", enum: ["SMS", "IG", "FB", "Email", "Live_Chat"], description: "Channel type matching the conversation" },
         message: { type: "string", description: "The reply text" },
         subject: { type: "string", description: "Email subject, required when type is Email" },
@@ -487,7 +488,19 @@ async function callTool(name: string, args: Json): Promise<unknown> {
       const subject = str(args.subject, 300);
       if (type === "Email" && !subject) return { error: "subject is required for Email" };
       const html = str(args.html, 20000);
-      const payload: Record<string, unknown> = { type, conversationId, message };
+      // The HighLevel send endpoint requires contactId ("Contact id not given" 404 without it).
+      // Resolve it server-side from the conversation so the agent only passes the conversation id;
+      // an explicit contact_id argument wins when provided.
+      let contactId = str(args.contact_id, 80) ?? "";
+      if (!contactId) {
+        const conv = (await hlAgentGet(`/conversations/${encodeURIComponent(conversationId)}`, g.pit)) as {
+          conversation?: { contactId?: string };
+          contactId?: string;
+        } | null;
+        contactId = conv?.conversation?.contactId ?? conv?.contactId ?? "";
+      }
+      if (!contactId) return { error: "could not resolve the contact of this conversation; pass contact_id" };
+      const payload: Record<string, unknown> = { type, conversationId, contactId, message };
       if (subject) payload.subject = subject;
       if (html) payload.html = html;
       const res = (await hlAgentWrite("POST", "/conversations/messages", g.pit, payload)) as Record<string, unknown> | null;
