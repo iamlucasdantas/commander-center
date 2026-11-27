@@ -97,6 +97,38 @@ const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { slug: { type: "string", description: "Account slug from panel_status" } }, required: ["slug"], additionalProperties: false },
   },
   {
+    name: "send_message",
+    description: "SEND a reply inside an existing conversation of an account's HighLevel subaccount. This is THE way to answer a person: get conversation_id from list_conversations, read it with conversation_messages, then send here. type must match the conversation channel: SMS for WhatsApp (Wazzy) and SMS conversations, IG for Instagram DM and Instagram comments, FB for Facebook Messenger and Facebook comments, Email for email (subject required), Live_Chat for live chat. The reply goes out on the subaccount's own channel. Returns the HighLevel message id as proof.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Account slug from panel_status" },
+        conversation_id: { type: "string", description: "Conversation id from list_conversations" },
+        type: { type: "string", enum: ["SMS", "IG", "FB", "Email", "Live_Chat"], description: "Channel type matching the conversation" },
+        message: { type: "string", description: "The reply text" },
+        subject: { type: "string", description: "Email subject, required when type is Email" },
+        html: { type: "string", description: "Optional email HTML body when type is Email" },
+      },
+      required: ["slug", "conversation_id", "type", "message"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "update_custom_value",
+    description: "Update one custom value of an account's HighLevel subaccount (for example the next-match fields: opponent, match links, email subject). Get custom_value_id and the current name from list_custom_values; the name must be sent back unchanged. Credential-looking values cannot be changed here.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Account slug from panel_status" },
+        custom_value_id: { type: "string", description: "Custom value id from list_custom_values" },
+        name: { type: "string", description: "The custom value name, unchanged" },
+        value: { type: "string", description: "The new value" },
+      },
+      required: ["slug", "custom_value_id", "name", "value"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "list_tasks",
     description: "List the panel's tasks (Lucas's pendencies, P1/P2/P3). Open ones first. Optional filter by project slug and status.",
     inputSchema: {
@@ -227,6 +259,32 @@ async function hlAgentGet(path: string, pit: string): Promise<unknown> {
   });
   if (!res.ok) throw new Error(`HighLevel ${res.status}`);
   return res.json();
+}
+
+async function hlAgentWrite(method: "POST" | "PUT", path: string, pit: string, body: unknown): Promise<unknown> {
+  const res = await fetch(`${HL_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${pit}`,
+      Version: "2021-07-28",
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20_000),
+    cache: "no-store",
+  });
+  const raw = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    parsed = { raw: raw.slice(0, 300) };
+  }
+  if (!res.ok) {
+    throw new Error(`HighLevel ${res.status}: ${typeof parsed === "object" && parsed ? JSON.stringify(parsed).slice(0, 300) : raw.slice(0, 300)}`);
+  }
+  return parsed;
 }
 
 /** Gate das ferramentas de leitura do CRM: conta conectada e token resolvido (Supabase ou env). */
@@ -388,6 +446,7 @@ async function callTool(name: string, args: Json): Promise<unknown> {
           const nm = typeof cv.name === "string" ? cv.name : "";
           const hidden = secretName.test(nm);
           return {
+            id: cv.id ?? null,
             name: nm,
             value: hidden ? null : (cv.value ?? null),
             hidden: hidden || undefined,
@@ -413,6 +472,46 @@ async function callTool(name: string, args: Json): Promise<unknown> {
             fieldKey: l.fieldKey ?? null,
           })),
       };
+    }
+    case "send_message": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const conversationId = str(args.conversation_id, 80) ?? "";
+      if (!conversationId) return { error: "conversation_id is required" };
+      const type = str(args.type, 20) ?? "";
+      if (!["SMS", "IG", "FB", "Email", "Live_Chat"].includes(type)) {
+        return { error: "type must be one of SMS, IG, FB, Email, Live_Chat" };
+      }
+      const message = str(args.message, 4000) ?? "";
+      if (!message) return { error: "message is required" };
+      const subject = str(args.subject, 300);
+      if (type === "Email" && !subject) return { error: "subject is required for Email" };
+      const html = str(args.html, 20000);
+      const payload: Record<string, unknown> = { type, conversationId, message };
+      if (subject) payload.subject = subject;
+      if (html) payload.html = html;
+      const res = (await hlAgentWrite("POST", "/conversations/messages", g.pit, payload)) as Record<string, unknown> | null;
+      return {
+        slug: g.a.slug,
+        conversationId,
+        type,
+        sent: true,
+        messageId: res?.messageId ?? res?.id ?? null,
+        conversationIdReturned: res?.conversationId ?? null,
+      };
+    }
+    case "update_custom_value": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const cvId = str(args.custom_value_id, 80) ?? "";
+      const name = str(args.name, 200) ?? "";
+      const value = typeof args.value === "string" ? args.value.slice(0, 2000) : "";
+      if (!cvId || !name) return { error: "custom_value_id and name are required" };
+      if (/(key|token|secret|private|integration|password|senha)/i.test(name)) {
+        return { error: "Credential-looking custom values cannot be changed through this tool" };
+      }
+      const res = (await hlAgentWrite("PUT", `/locations/${g.a.locationId}/customValues/${encodeURIComponent(cvId)}`, g.pit, { name, value })) as Record<string, unknown> | null;
+      return { slug: g.a.slug, customValueId: cvId, name, updated: true, value: res && "value" in res ? res.value : value };
     }
     case "list_tasks": {
       if (!stateConfigured()) return { configured: false, tasks: [] };
