@@ -136,10 +136,15 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
     title: "Appointments",
     kpiLabel: "Main KPI: appointments booked",
     showCalls: true,
+    showAppointments: true,
     callAgent: "Maria Luz, the AI agent",
     stagesPipeline: "Gestão de Clientes",
-    note: "The stage counts below are the panel's proxy for bookings (Agendado, Compareceu) until the calendars scope lands. Intake here is mostly Instagram and WhatsApp, so the recent window may show few or no phone calls.",
-    pendencies: [PEND_CALENDARS, PEND_MESSAGES],
+    note: "Appointments are the product here: teleconsultations over Google Meet, paid at booking. The location runs 9 active calendars (teleconsultation in Portuguese and Spanish, paid by Pix, BRL, USD or PYG, plus a rescheduling calendar with credit). Measured live on 2026-11-27: 1 appointment in the last 30 days and 0 coming up, so the booking structure is complete but barely used inside HighLevel. Intake is mostly Instagram and WhatsApp; Maria Luz had no phone calls in the recent window, and the 99 open opportunities all sit in Novo lead with no value set.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: this practice's intake is messaging (Instagram and WhatsApp), and the messages API answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
+    pendencies: [],
   },
   "blue-steel-auto-body": {
     title: "Quote requests",

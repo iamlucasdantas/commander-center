@@ -329,9 +329,16 @@ export async function fetchV2Account(a: Account): Promise<V2AccountData> {
     if (SERVICE_CONFIG[a.slug]?.showAppointments) {
       try {
         const cals = (await withRetry(() => hlGet(`/calendars/?locationId=${a.locationId}`, pit), 2)) as {
-          calendars?: { id?: string }[];
+          calendars?: { id?: string; isActive?: boolean }[];
         };
-        const ids = (cals.calendars ?? []).map((c) => c.id).filter((x): x is string => Boolean(x)).slice(0, 10);
+        // Só calendários ativos (auditoria Dr. Josiel, 2026-11-27: a
+        // location tem 11 calendários, 2 inativos, e o corte antigo de
+        // 10 deixava de fora justamente uma agenda ativa de teleconsulta).
+        const ids = (cals.calendars ?? [])
+          .filter((c) => c.isActive !== false)
+          .map((c) => c.id)
+          .filter((x): x is string => Boolean(x))
+          .slice(0, 20);
         let past30 = 0;
         let next30 = 0;
         await Promise.all(ids.map(async (id) => {
