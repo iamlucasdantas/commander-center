@@ -87,6 +87,16 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "list_custom_values",
+    description: "Read the custom values of one account's HighLevel subaccount (site, social links, group links, per-match fields). Credential-looking values (keys, tokens, integrations) are listed by name with the value hidden. Read-only.",
+    inputSchema: { type: "object", properties: { slug: { type: "string", description: "Account slug from panel_status" } }, required: ["slug"], additionalProperties: false },
+  },
+  {
+    name: "list_trigger_links",
+    description: "Read the trigger links of one account's HighLevel subaccount: name and the URL each one redirects to (group invites, social links, interview links). Read-only.",
+    inputSchema: { type: "object", properties: { slug: { type: "string", description: "Account slug from panel_status" } }, required: ["slug"], additionalProperties: false },
+  },
+  {
     name: "list_tasks",
     description: "List the panel's tasks (Lucas's pendencies, P1/P2/P3). Open ones first. Optional filter by project slug and status.",
     inputSchema: {
@@ -362,6 +372,46 @@ async function callTool(name: string, args: Json): Promise<unknown> {
           contactId: m.contactId ?? null,
           body: typeof m.body === "string" ? m.body.slice(0, 500) : null,
         })),
+      };
+    }
+    case "list_custom_values": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const res = (await hlAgentGet(`/locations/${g.a.locationId}/customValues`, g.pit)) as {
+        customValues?: Record<string, unknown>[];
+      };
+      const secretName = /(key|token|secret|private|integration|password|senha)/i;
+      return {
+        slug: g.a.slug,
+        name: g.a.name,
+        customValues: (res.customValues ?? []).map((cv) => {
+          const nm = typeof cv.name === "string" ? cv.name : "";
+          const hidden = secretName.test(nm);
+          return {
+            name: nm,
+            value: hidden ? null : (cv.value ?? null),
+            hidden: hidden || undefined,
+          };
+        }),
+      };
+    }
+    case "list_trigger_links": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const res = (await hlAgentGet(`/links/?locationId=${g.a.locationId}`, g.pit)) as {
+        links?: Record<string, unknown>[];
+      };
+      return {
+        slug: g.a.slug,
+        name: g.a.name,
+        links: (res.links ?? [])
+          .filter((l) => !l.deleted)
+          .map((l) => ({
+            id: l.id ?? null,
+            name: l.name ?? null,
+            redirectTo: l.redirectTo ?? null,
+            fieldKey: l.fieldKey ?? null,
+          })),
       };
     }
     case "list_tasks": {
