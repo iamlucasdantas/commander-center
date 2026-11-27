@@ -162,8 +162,14 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
   "simpson-ltd": {
     title: "Website first, 90 days",
     kpiLabel: "Main KPI: website sessions (GA4), then sales",
-    note: "The GA4 property on file for Simpson comes from a Firebase project; if the Website block says \"connected, no data\", the property is not receiving the site's traffic yet.",
-    pendencies: [PEND_REPUTATION],
+    note: "Collector firearms store in Galesburg, IL; the 90-day plan started on 2026-11-03 (website and SEO first, then sales), plus reputation management, YouTube and Google Business. Measured live on 2026-11-27: 181,462 sessions in 28 days (+7%), but 130,835 of them are Direct with peak days of 17k sessions, the suspect traffic the team already flagged (Log 320): the trustworthy headline is Organic Search, 45,548 sessions, in the Website & Google tab; a US-only cut is not collected yet. Sales are real and verified through the API: 59 won opportunities, $91,651 in the loaded window. Reputation: 4.0 stars, 92 reviews, 75 without a reply, average reply time 59.8 days, with 17 replies in the last 30 days. Two P1 agent suggestions wait on this page, including the review-request email landing in spam reported by Lance.",
+    bookedNote:
+      "No booking calendars exist in this client's HighLevel location (checked live on 2026-11-27): sales close as won opportunities, shown in the funnel's Won stage, so no booked number is shown.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
+    pendencies: [],
   },
   "the-gypsy-highway": {
     title: "Website traffic",
