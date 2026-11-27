@@ -12,11 +12,11 @@ export async function GET() {
       kind: a.kind,
       sourceStatus: a.sourceStatus,
       locationId: a.locationId,
-      credential: a.pitEnv
-        ? (await getPitToken(a))
-          ? "configured"
-          : "waiting for credential"
-        : "own source or no credential",
+      credential: (await getPitToken(a))
+        ? "configured"
+        : a.sourceStatus === "hl-location"
+          ? "waiting for credential"
+          : "own source or no credential",
     })),
   );
   return NextResponse.json({ accounts });
