@@ -139,7 +139,7 @@ export default async function V2AccountPage({
   // (showCalls): é de lá que sai o resumo de chamadas do Voice AI.
   let detail: AccountDetail | null = null;
   let detailFailed = false;
-  if (tab === "contacts" || (tab === "overview" && (cfg?.showCalls || cfg?.showWon || cfg?.stagesPipeline))) {
+  if (tab === "contacts" || (tab === "overview" && (cfg?.showCalls || cfg?.showWon || cfg?.stagesPipeline || cfg?.formKpi))) {
     try {
       detail = await fetchAccountDetail(a);
     } catch {
@@ -445,7 +445,7 @@ function OverviewTab({
         </>
       )}
 
-      {(cfg?.showWon || cfg?.stagesPipeline) && detail && (
+      {(cfg?.showWon || cfg?.stagesPipeline || cfg?.formKpi) && detail && (
         <>
           <h2>Contracted service · {cfg.title}</h2>
           <div className="card" title="Source: HighLevel opportunities read by the panel (same loaded window as the current version's account page).">
@@ -467,6 +467,15 @@ function OverviewTab({
                   <div className="label">Lost · loaded window</div>
                   <div className="value">{detail.won.lostCount}</div>
                   <div className="hint">in the same window</div>
+                </div>
+              </div>
+            )}
+            {cfg.formKpi && (
+              <div className="kpis" style={{ marginTop: 14 }}>
+                <div>
+                  <div className="label">Form leads · last 30 days</div>
+                  <div className="value">{detail.metrics.sourceCounts["Form"] ?? 0}</div>
+                  <div className="hint">contacts whose source is the website form, the contracted KPI of this account</div>
                 </div>
               </div>
             )}

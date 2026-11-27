@@ -150,7 +150,13 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
     title: "Quote requests",
     kpiLabel: "Main KPI: quote requests from the website form",
     formKpi: true,
-    note: "Traffic behind those requests is in the Website block below (GA4 + Search Console).",
+    note: "Contracted work today is the website (bluesteelauto.com) for this auto body shop in Frisco, TX (the subaccount also carries the legacy Planet Dents operation). Traffic behind the requests is in the Website & Google tab (GA4 + Search Console). Measured live on 2026-11-27: 1,854 impressions and only 6 clicks in 28 days (CTR 0.3%, average position 36.6), 190 sessions, so the site is found but rarely chosen; the form-lead count below is the KPI. Two SEO agent suggestions are waiting on this page: the site's review badge shows 4.8/38 while Google shows 4.9/37, and template placeholders ([PREENCHER]) are still live on the site.",
+    bookedNote:
+      "Not the metric for this client: the contracted KPI is quote requests from the website form, shown in the contracted service block on this page. The shop does have a Free Estimate booking calendar in HighLevel (4 bookings in the last 12 months, none in the last 30 days); customers mostly come to the shop, so no booked number is shown.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
     pendencies: [],
   },
   "simpson-ltd": {
