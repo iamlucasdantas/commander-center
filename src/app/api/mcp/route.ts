@@ -98,19 +98,19 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "send_message",
-    description: "SEND a reply inside an existing conversation of an account's HighLevel subaccount. This is THE way to answer a person: get conversation_id from list_conversations, read it with conversation_messages, then send here. type must match the conversation channel: SMS for WhatsApp (Wazzy) and SMS conversations, IG for Instagram DM and Instagram comments, FB for Facebook Messenger and Facebook comments, Email for email (subject required), Live_Chat for live chat. The reply goes out on the subaccount's own channel. Returns the HighLevel message id as proof.",
+    description: "SEND a message in an account's HighLevel subaccount. This is THE way to message a person. Two modes: (1) REPLY: pass conversation_id from list_conversations (read it first with conversation_messages); the contact is resolved on the server. (2) FIRST MESSAGE to a contact with no conversation yet: omit conversation_id and pass contact_id from list_contacts (search by phone or name); a new conversation is created. type must match the channel: SMS for WhatsApp (Wazzy) and SMS, IG for Instagram DM and Instagram comments, FB for Facebook Messenger and Facebook comments, Email for email (subject required), Live_Chat for live chat. The message goes out on the subaccount's own channel. Returns the HighLevel message id as proof.",
     inputSchema: {
       type: "object",
       properties: {
         slug: { type: "string", description: "Account slug from panel_status" },
-        conversation_id: { type: "string", description: "Conversation id from list_conversations" },
-        contact_id: { type: "string", description: "Optional contact id from list_contacts. Normally omit it: the tool resolves the conversation's contact on the server." },
-        type: { type: "string", enum: ["SMS", "IG", "FB", "Email", "Live_Chat"], description: "Channel type matching the conversation" },
-        message: { type: "string", description: "The reply text" },
+        conversation_id: { type: "string", description: "Conversation id from list_conversations, for a REPLY inside an existing conversation. Omit it to send a FIRST message to a contact: a new conversation is created, and contact_id is then required." },
+        contact_id: { type: "string", description: "Contact id from list_contacts (search by phone or name). Required when conversation_id is omitted (first message). In reply mode it is normally omitted: the tool resolves the conversation's contact on the server." },
+        type: { type: "string", enum: ["SMS", "IG", "FB", "Email", "Live_Chat"], description: "Channel type. SMS sends through the account's WhatsApp provider (Wazzy) in this subaccount." },
+        message: { type: "string", description: "The message text" },
         subject: { type: "string", description: "Email subject, required when type is Email" },
         html: { type: "string", description: "Optional email HTML body when type is Email" },
       },
-      required: ["slug", "conversation_id", "type", "message"],
+      required: ["slug", "type", "message"],
       additionalProperties: false,
     },
   },
@@ -478,7 +478,6 @@ async function callTool(name: string, args: Json): Promise<unknown> {
       const g = await gateAccount(str(args.slug, 80) ?? "");
       if ("error" in g) return g.error;
       const conversationId = str(args.conversation_id, 80) ?? "";
-      if (!conversationId) return { error: "conversation_id is required" };
       const type = str(args.type, 20) ?? "";
       if (!["SMS", "IG", "FB", "Email", "Live_Chat"].includes(type)) {
         return { error: "type must be one of SMS, IG, FB, Email, Live_Chat" };
@@ -489,24 +488,33 @@ async function callTool(name: string, args: Json): Promise<unknown> {
       if (type === "Email" && !subject) return { error: "subject is required for Email" };
       const html = str(args.html, 20000);
       // The HighLevel send endpoint requires contactId ("Contact id not given" 404 without it).
-      // Resolve it server-side from the conversation so the agent only passes the conversation id;
+      // Reply mode (conversation_id given): resolve the contact server-side from the conversation;
       // an explicit contact_id argument wins when provided.
+      // First-message mode (no conversation_id): contact_id is required and HighLevel creates
+      // a new conversation for that contact.
       let contactId = str(args.contact_id, 80) ?? "";
-      if (!contactId) {
+      if (!contactId && conversationId) {
         const conv = (await hlAgentGet(`/conversations/${encodeURIComponent(conversationId)}`, g.pit)) as {
           conversation?: { contactId?: string };
           contactId?: string;
         } | null;
         contactId = conv?.conversation?.contactId ?? conv?.contactId ?? "";
       }
-      if (!contactId) return { error: "could not resolve the contact of this conversation; pass contact_id" };
-      const payload: Record<string, unknown> = { type, conversationId, contactId, message };
+      if (!contactId) {
+        return {
+          error: conversationId
+            ? "could not resolve the contact of this conversation; pass contact_id"
+            : "contact_id is required to send a first message (find the contact with list_contacts, searching by phone or name)",
+        };
+      }
+      const payload: Record<string, unknown> = { type, contactId, message };
+      if (conversationId) payload.conversationId = conversationId;
       if (subject) payload.subject = subject;
       if (html) payload.html = html;
       const res = (await hlAgentWrite("POST", "/conversations/messages", g.pit, payload)) as Record<string, unknown> | null;
       return {
         slug: g.a.slug,
-        conversationId,
+        conversationId: conversationId || null,
         type,
         sent: true,
         messageId: res?.messageId ?? res?.id ?? null,
