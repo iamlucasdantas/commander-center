@@ -109,8 +109,14 @@ export const SERVICE_CONFIG: Record<string, ServiceConfig> = {
   "pee-wees-soul-food": {
     title: "Google reviews",
     kpiLabel: "Main KPI: new Google reviews (goal: 5 per month)",
-    note: "Google Business posts run 3x per week through the Social Planner inside HighLevel.",
-    pendencies: [PEND_REPUTATION],
+    note: "Contracted work: Google Business Profile (posts 3x per week through the Social Planner inside HighLevel, weekly approval by email) and the site/GHL. Reviews are measured by the Google Business Profile collector (daily snapshots). Measured live on 2026-11-27: 565 reviews, 4.7 stars, 564 replied and only 1 without a reply, average reply time 16 hours, the best reply operation of the portfolio so far. The main KPI is below goal: 3 new reviews in 30 days against the goal of 5 per month, down 40% on the previous period. Collector caveat: the last collection was flagged partial (it covered the 500 most recent reviews of 565), so the counts come from that coverage until the collector paginates further.",
+    bookedNote:
+      "Not tracked in HighLevel: this client's contracted work is the Google profile and the site, and reservations are not recorded here (the location's only HighLevel calendar is a personal one, not a booking calendar), so no booked number is shown.",
+    speedToLeadNote:
+      "Not computed yet: the messages API answers for this account (verified live on 2026-11-27), so first-response time can be measured; the panel does not compute it yet.",
+    missedCallsNote:
+      "Not computed yet: the per-call detail sits behind the messages API, which answers for this account (verified live on 2026-11-27); the panel does not compute missed calls yet.",
+    pendencies: [],
   },
   globalaser: {
     title: "Equipment rentals",
