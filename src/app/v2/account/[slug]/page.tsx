@@ -358,7 +358,12 @@ function OverviewTab({
               </p>
             )}
           </div>
-          {calls && (calls.types !== null || calls.weekItems.length > 0) && (
+          {calls && calls.typesRead === 0 && calls.weekItems.length === 0 && (
+            <p className="hint" style={{ marginTop: 10 }}>
+              No calls were read in the recent window, so there are no call types or an agent grade to show for this period.
+            </p>
+          )}
+          {calls && (calls.typesRead > 0 || calls.weekItems.length > 0) && (
             <div className="card" style={{ marginTop: 14 }} title="Source: the post-call workflow fields recorded on each contact in HighLevel (Call Category, Reason For Call, Service of Interest, Lead Temperature, Urgent Flag), read on the most recent call conversations. Call content and duration are not read: this account is HIPAA in HighLevel and the messages API answers 401.">
               <div style={{ display: "flex", gap: 26, flexWrap: "wrap" }}>
                 {calls.types !== null && calls.typesRead > 0 && (() => {
