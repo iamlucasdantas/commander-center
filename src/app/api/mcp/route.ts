@@ -115,6 +115,21 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "hl_request",
+    description: "Call ANY endpoint of the account's HighLevel API: the whole API, not a fixed list. This is the general-purpose door for everything the specific tools do not cover (social planner posts, workflows, opportunities, calendars, forms, orders, any endpoint from the official docs). You never need any key: the server resolves the subaccount token. Pass the API path exactly as documented, including the location id where the endpoint requires it (get it from account_summary or panel_status). Returns the HighLevel HTTP status and the response body verbatim, errors included. Examples: GET /social-media-posting/<locationId>/accounts; POST /social-media-posting/<locationId>/posts/list with body {\"type\":\"all\"}; GET /opportunities/search?location_id=<locationId>.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Account slug from panel_status" },
+        method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"], description: "HTTP method of the API endpoint" },
+        path: { type: "string", description: "API path starting with /, exactly as documented, query string included when needed" },
+        body: { type: "object", description: "Optional JSON body for POST, PUT and PATCH endpoints", additionalProperties: true },
+      },
+      required: ["slug", "method", "path"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "update_custom_value",
     description: "Update one custom value of an account's HighLevel subaccount (for example the next-match fields: opponent, match links, email subject). Get custom_value_id and the current name from list_custom_values; the name must be sent back unchanged. Credential-looking values cannot be changed here.",
     inputSchema: {
@@ -260,6 +275,43 @@ async function hlAgentGet(path: string, pit: string): Promise<unknown> {
   });
   if (!res.ok) throw new Error(`HighLevel ${res.status}`);
   return res.json();
+}
+
+/**
+ * Generic HighLevel call for hl_request: returns the API status and body
+ * verbatim (errors included) so the agent sees exactly what the API said.
+ * This is the bridge's power behind the panel door: the agent never
+ * handles any key, the server resolves the subaccount token as always.
+ */
+async function hlAgentCall(
+  method: string,
+  path: string,
+  pit: string,
+  body: unknown,
+): Promise<{ status: number; data: unknown }> {
+  const init: RequestInit = {
+    method,
+    headers: {
+      Authorization: `Bearer ${pit}`,
+      Version: "2021-07-28",
+      Accept: "application/json",
+    },
+    signal: AbortSignal.timeout(25_000),
+    cache: "no-store",
+  };
+  if (body !== undefined && method !== "GET" && method !== "DELETE") {
+    (init.headers as Record<string, string>)["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${HL_BASE}${path}`, init);
+  const raw = await res.text();
+  let data: unknown = null;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = { raw: raw.slice(0, 1000) };
+  }
+  return { status: res.status, data };
 }
 
 async function hlAgentWrite(method: "POST" | "PUT", path: string, pit: string, body: unknown): Promise<unknown> {
@@ -520,6 +572,44 @@ async function callTool(name: string, args: Json): Promise<unknown> {
         messageId: res?.messageId ?? res?.id ?? null,
         conversationIdReturned: res?.conversationId ?? null,
       };
+    }
+    case "hl_request": {
+      const g = await gateAccount(str(args.slug, 80) ?? "");
+      if ("error" in g) return g.error;
+      const method = (str(args.method, 10) ?? "").toUpperCase();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+        return { error: "method must be one of GET, POST, PUT, PATCH, DELETE" };
+      }
+      const path = typeof args.path === "string" ? args.path : "";
+      if (
+        path.length < 2 ||
+        path.length > 2000 ||
+        !path.startsWith("/") ||
+        path.startsWith("//") ||
+        path.includes("..") ||
+        path.includes("\\") ||
+        /[\s\x00-\x1f]/.test(path)
+      ) {
+        return { error: "path must be an API path starting with / (no spaces, no ..)" };
+      }
+      const body = args.body !== undefined ? args.body : undefined;
+      const { status, data } = await hlAgentCall(method, path, g.pit, body);
+      let serialized = "";
+      try {
+        serialized = JSON.stringify(data) ?? "";
+      } catch {
+        serialized = "";
+      }
+      if (serialized.length > 9000) {
+        return {
+          slug: g.a.slug,
+          status,
+          truncated: true,
+          note: "Response was larger than 9000 characters and was cut. Narrow the call (limit, page, filters) to see the rest.",
+          dataPreview: serialized.slice(0, 9000),
+        };
+      }
+      return { slug: g.a.slug, status, data };
     }
     case "update_custom_value": {
       const g = await gateAccount(str(args.slug, 80) ?? "");
