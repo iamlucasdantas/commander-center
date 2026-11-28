@@ -11,6 +11,9 @@ import { getAgencyAccessToken } from "@/lib/agency";
 //   POST /api/openbot
 //   Header: x-openbot-key = env OPENBOT_AGENT_KEY (sem a env, 503:
 //   a porta nunca fica aberta por engano).
+//   Chave rotacionada em 2026-11-27 a pedido do Lucas: a cópia antiga
+//   divergiu da env e passou a ser recusada; a nova vive na env de
+//   produção e nos arquivos de comando dos agentes.
 //   Body: { location_id, method, path, body? }
 // O servidor lê o token da location direto do Supabase, chama a API
 // do HighLevel com ele e devolve SÓ a resposta do HighLevel (JSON e
